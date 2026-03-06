@@ -30,7 +30,6 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse, HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import HTMLResponse
 from google.oauth2.service_account import Credentials
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
@@ -653,67 +652,6 @@ async def api_seguimiento(lead_id: int, req: Request):
 async def api_stats():
     return stats_crm()
 
-@app.get("/openai/usage")
-async def api_openai_usage():
-    """
-    Consulta el uso y créditos disponibles de la cuenta OpenAI.
-    Usa la API de billing de OpenAI (requiere OPENAI_KEY con permisos de billing).
-    """
-    import httpx
-    from datetime import date
-
-    if not OPENAI_KEY:
-        raise HTTPException(503, "OPENAI_KEY no configurada")
-
-    headers = {"Authorization": f"Bearer {OPENAI_KEY}"}
-
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            # Suscripción / límite
-            sub_r = await client.get(
-                "https://api.openai.com/dashboard/billing/subscription",
-                headers=headers,
-            )
-            # Uso del mes actual
-            today      = date.today()
-            start_date = today.replace(day=1).isoformat()
-            end_date   = today.isoformat()
-            uso_r = await client.get(
-                "https://api.openai.com/dashboard/billing/usage",
-                headers=headers,
-                params={"start_date": start_date, "end_date": end_date},
-            )
-
-        if sub_r.status_code != 200:
-            # Puede ocurrir en cuentas API puras (sin billing dashboard)
-            return {
-                "error": "No se pudo obtener info de billing",
-                "detalle": sub_r.text,
-                "status": sub_r.status_code,
-                "hint": "Las cuentas API puras (sin tarjeta) no exponen el endpoint de billing. Verifica en platform.openai.com/usage",
-            }
-
-        sub  = sub_r.json()
-        uso  = uso_r.json() if uso_r.status_code == 200 else {}
-
-        limite_total  = sub.get("hard_limit_usd", sub.get("system_hard_limit_usd", 0))
-        usado_mes     = round(uso.get("total_usage", 0) / 100, 4)   # viene en centavos
-        disponible    = round(max(limite_total - usado_mes, 0), 4)
-        porcentaje    = round((usado_mes / limite_total * 100), 1) if limite_total else 0
-
-        return {
-            "plan":            sub.get("plan", {}).get("title", "N/A"),
-            "limite_usd":      limite_total,
-            "usado_mes_usd":   usado_mes,
-            "disponible_usd":  disponible,
-            "porcentaje_uso":  porcentaje,
-            "periodo":         f"{start_date} → {end_date}",
-            "acceso_activo":   sub.get("access_until", ""),
-        }
-
-    except Exception as e:
-        raise HTTPException(500, f"Error consultando OpenAI: {str(e)}")
-
 @app.get("/crm/asesores")
 async def api_asesores():
     return listar_asesores()
@@ -728,14 +666,16 @@ async def api_crear_asesor(req: Request):
 async def api_slots(fecha: str = None, asesor_id: int = None):
     asesores = listar_asesores()
     asesor   = next((a for a in asesores if a["id"] == asesor_id), asesores[0] if asesores else None)
-    cal_id   = (asesor.get("calendar_id") or CALENDAR_ID) if asesor else CALENDAR_ID
+    raw_cal  = (asesor.get("calendar_id") or "") if asesor else ""
+    cal_id   = raw_cal if raw_cal and raw_cal != "primary" else CALENDAR_ID
     return {"slots": slots_disponibles(cal_id, fecha) if fecha else proponer_slots(cal_id, n_opciones=4)}
 
 @app.get("/calendar/agenda")
 async def api_agenda(fecha: str = None, asesor_id: int = None):
     asesores = listar_asesores()
     asesor   = next((a for a in asesores if a["id"] == asesor_id), asesores[0] if asesores else None)
-    cal_id   = (asesor.get("calendar_id") or CALENDAR_ID) if asesor else CALENDAR_ID
+    raw_cal  = (asesor.get("calendar_id") or "") if asesor else ""
+    cal_id   = raw_cal if raw_cal and raw_cal != "primary" else CALENDAR_ID
     return {"eventos": eventos_del_dia(cal_id, fecha)}
 
 @app.delete("/calendar/citas/{cita_id}")
@@ -753,14 +693,7 @@ async def api_cancelar_cita(cita_id: int):
     actualizar_cita(cita_id, {"estado":"CANCELADA"})
     return {"ok": True}
 
-@app.get("/", response_class=HTMLResponse)
-async def crm_home():
-    try:
-        with open("crm_dashboard.html", "r", encoding="utf-8") as f:
-            return f.read()
-    except:
-        return "<h1>CRM no encontrado</h1>"
-      
+
 # =============================
 # RUN
 # =============================

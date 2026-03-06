@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>NeoLife CRM</title>
 <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 <style>
   :root {
     --bg:#0a0a0b;--surface:#111113;--card:#18181c;--border:#252528;
@@ -124,7 +125,6 @@
     <div class="nav-item" onclick="showPage('pipeline',this)"><span class="nav-icon">◫</span> Pipeline</div>
     <div class="nav-item" onclick="showPage('agenda',this)"><span class="nav-icon">◷</span> Agenda</div>
     <div class="nav-item" onclick="showPage('whatsapp',this)"><span class="nav-icon">◎</span> WhatsApp</div>
-    <div class="nav-item" onclick="showPage('openai',this)"><span class="nav-icon">◈</span> OpenAI</div>
   </nav>
   <div class="sidebar-footer">
     <span class="status-dot" id="bot-dot"></span>
@@ -194,18 +194,35 @@
       </div>
     </div>
     <div id="wa-content"><div class="loading"><span class="spinner"></span>Verificando…</div></div>
-  </div>
 
-  <!-- ── OpenAI ── -->
-  <div id="page-openai" class="page">
-    <div class="topbar">
-      <h1 class="page-title">Créditos OpenAI</h1>
-      <div class="topbar-right">
-        <button class="btn btn-ghost" onclick="loadOpenAI()">↻ Actualizar</button>
-        <a href="https://platform.openai.com/usage" target="_blank" class="btn btn-ghost" style="text-decoration:none">↗ Ver en OpenAI</a>
+    <!-- QR canvas oculto, se muestra solo cuando hay QR pendiente -->
+    <div id="wa-qr-box" style="display:none;margin-top:24px">
+      <div style="display:flex;gap:40px;align-items:flex-start;flex-wrap:wrap">
+
+        <!-- QR visual -->
+        <div style="background:#fff;padding:20px;border-radius:8px;box-shadow:0 0 0 1px var(--border);display:inline-block">
+          <canvas id="wa-qr-canvas"></canvas>
+        </div>
+
+        <!-- Instrucciones -->
+        <div style="max-width:340px">
+          <div style="font-size:13px;color:var(--amber);font-weight:500;margin-bottom:16px">
+            📱 Escanea para conectar WhatsApp
+          </div>
+          <ol style="font-size:12px;color:var(--muted);line-height:2.2;padding-left:18px">
+            <li>Abre <strong style="color:var(--text)">WhatsApp</strong> en tu celular</li>
+            <li>Ve a <strong style="color:var(--text)">Dispositivos vinculados</strong></li>
+            <li>Toca <strong style="color:var(--text)">Vincular un dispositivo</strong></li>
+            <li>Apunta la cámara a este código QR</li>
+          </ol>
+          <div style="margin-top:20px;padding:12px 16px;background:rgba(201,168,76,.07);border:1px solid var(--gold-dim);border-radius:var(--radius);font-size:10px;color:var(--muted);line-height:1.7">
+            El QR se renueva cada 20 segundos.<br>
+            Esta página lo actualiza automáticamente.
+          </div>
+          <div id="wa-qr-timer" style="margin-top:14px;font-size:10px;color:var(--muted)"></div>
+        </div>
       </div>
     </div>
-    <div id="openai-content"><div class="loading"><span class="spinner"></span>Consultando…</div></div>
   </div>
 
 </main>
@@ -237,7 +254,7 @@ function showPage(name, el) {
   if (name === 'pipeline') loadPipeline();
   if (name === 'agenda')   loadAgenda();
   if (name === 'whatsapp') loadWAStatus();
-  if (name === 'openai')   loadOpenAI();
+  else _stopQrPolling();
 }
 
 async function loadAll() {
@@ -399,42 +416,138 @@ async function loadAgenda() {
   }
 }
 
+// ── WhatsApp QR polling ──
+let _waQrInterval   = null;
+let _waQrInstance   = null;
+let _waLastQrString = null;
+
+function _stopQrPolling() {
+  if (_waQrInterval) { clearInterval(_waQrInterval); _waQrInterval = null; }
+}
+
+async function _renderQr(qrString) {
+  const box    = document.getElementById('wa-qr-box');
+  const canvas = document.getElementById('wa-qr-canvas');
+  box.style.display = 'block';
+
+  // Solo re-renderizar si cambió el string (evita parpadeo)
+  if (qrString === _waLastQrString) return;
+  _waLastQrString = qrString;
+
+  // Limpiar instancia previa
+  if (_waQrInstance) { try { _waQrInstance.clear(); } catch(_){} }
+  canvas.innerHTML = '';
+
+  _waQrInstance = new QRCode(canvas, {
+    text:          qrString,
+    width:         240,
+    height:        240,
+    colorDark:     '#000000',
+    colorLight:    '#ffffff',
+    correctLevel:  QRCode.CorrectLevel.M,
+  });
+
+  // Temporizador regresivo de 20s (QR expira en ~20s en WhatsApp)
+  let secs = 20;
+  const timerEl = document.getElementById('wa-qr-timer');
+  const tick = () => {
+    if (timerEl) timerEl.textContent = secs > 0
+      ? `⏱ Se renueva en ${secs}s`
+      : '🔄 Actualizando QR…';
+    secs--;
+  };
+  tick();
+  if (_waQrInstance._elCountDown) clearInterval(_waQrInstance._elCountDown);
+  _waQrInstance._elCountDown = setInterval(tick, 1000);
+}
+
 async function loadWAStatus() {
-  document.getElementById('wa-content').innerHTML = '<div class="loading"><span class="spinner"></span>Verificando…</div>';
+  _stopQrPolling();
+  _waLastQrString = null;
+  document.getElementById('wa-qr-box').style.display = 'none';
+  document.getElementById('wa-content').innerHTML =
+    '<div class="loading"><span class="spinner"></span>Verificando…</div>';
+
+  await _pollWAOnce();
+
+  // Arranca polling solo si estamos en la página WhatsApp
+  _waQrInterval = setInterval(async () => {
+    const page = document.getElementById('page-whatsapp');
+    if (!page || !page.classList.contains('active')) { _stopQrPolling(); return; }
+    await _pollWAOnce();
+  }, 5000);
+}
+
+async function _pollWAOnce() {
   try {
-    const data = await (await fetch((WA_API||API) + '/status', {signal:AbortSignal.timeout(6000)})).json();
-    if (data.connected) {
+    const data = await (await fetch((WA_API||API) + '/status', {signal: AbortSignal.timeout(6000)})).json();
+
+    if (data.whatsapp === 'CONNECTED' || data.connected === true) {
+      _stopQrPolling();
+      document.getElementById('wa-qr-box').style.display = 'none';
       document.getElementById('wa-content').innerHTML = `
         <div class="wa-card">
-          <span style="font-size:28px">✅</span>
+          <span style="font-size:36px">✅</span>
           <div>
-            <div style="font-size:13px;margin-bottom:4px">WhatsApp conectado</div>
-            <div style="font-size:10px;color:var(--muted)">Sesión activa en Redis · ${data.timestamp?fmtDate(data.timestamp):''}</div>
+            <div style="font-size:14px;margin-bottom:6px;color:var(--green)">WhatsApp conectado</div>
+            <div style="font-size:10px;color:var(--muted);line-height:1.8">
+              Sesión activa · guardada en Redis<br>
+              ${data.timestamp ? fmtDate(data.timestamp) : ''}
+            </div>
           </div>
         </div>`;
-    } else if (data.qr) {
+
+    } else if (data.qr_pending === true || data.qr) {
+      // Hay QR — buscar el string
+      let qrString = data.qr || null;
+      if (!qrString) {
+        // Pedir QR explícito al bridge
+        try {
+          const qrData = await (await fetch((WA_API||API) + '/qr', {signal: AbortSignal.timeout(5000)})).json();
+          qrString = qrData.qr || null;
+        } catch(_) {}
+      }
+
       document.getElementById('wa-content').innerHTML = `
-        <div class="wa-card" style="flex-direction:column;align-items:flex-start;gap:14px">
-          <div style="color:var(--amber);font-size:12px;font-weight:500">⚠ Sin sesión — escanea el QR para conectar</div>
-          <div style="font-size:10px;color:var(--muted);line-height:1.8">
-            1. Copia el texto de abajo<br>
-            2. Ve a <a href="https://qr-code-generator.com" target="_blank" style="color:var(--blue)">qr-code-generator.com</a> y pégalo para generar la imagen<br>
-            3. En tu WhatsApp → <strong>Dispositivos vinculados</strong> → Escanea<br>
-            4. La sesión se guarda en Redis automáticamente ✓
-          </div>
-          <textarea id="qr-txt" style="width:100%;height:80px;background:var(--surface);border:1px solid var(--border);color:var(--muted);font-family:'DM Mono',monospace;font-size:9px;padding:8px;border-radius:var(--radius)" readonly>${data.qr}</textarea>
-          <button class="btn btn-ghost" onclick="document.getElementById('qr-txt').select();document.execCommand('copy');this.textContent='✓ Copiado'">📋 Copiar QR</button>
+        <div style="font-size:11px;color:var(--amber);margin-bottom:4px">
+          ⚠ Sin sesión activa — escanea el QR para conectar
         </div>`;
+
+      if (qrString) {
+        await _renderQr(qrString);
+      } else {
+        document.getElementById('wa-content').innerHTML += `
+          <div style="font-size:10px;color:var(--muted);margin-top:8px">
+            QR pendiente en el bridge — esperando texto…
+          </div>`;
+      }
+
     } else {
-      document.getElementById('wa-content').innerHTML = '<div class="empty">Estado desconocido — revisa los logs del bridge en Render</div>';
+      document.getElementById('wa-qr-box').style.display = 'none';
+      document.getElementById('wa-content').innerHTML = `
+        <div class="wa-card">
+          <span style="font-size:28px">⚠️</span>
+          <div>
+            <div style="font-size:12px;color:var(--amber);margin-bottom:4px">Estado desconocido</div>
+            <div style="font-size:10px;color:var(--muted)">
+              El bridge está respondiendo pero sin estado claro.<br>
+              Revisa los logs de <strong>neolife-wa</strong> en Render.
+            </div>
+          </div>
+        </div>`;
     }
+
   } catch {
+    document.getElementById('wa-qr-box').style.display = 'none';
     document.getElementById('wa-content').innerHTML = `
       <div class="wa-card">
         <span style="font-size:28px">❌</span>
         <div>
           <div style="font-size:13px;margin-bottom:4px;color:var(--red)">Bridge WhatsApp offline</div>
-          <div style="font-size:10px;color:var(--muted)">Verifica que el servicio <strong>neolife-wa</strong> esté corriendo en Render</div>
+          <div style="font-size:10px;color:var(--muted)">
+            Verifica que el servicio <strong>neolife-wa</strong> esté corriendo en Render.<br>
+            Si acaba de arrancar, espera ~30s y vuelve a verificar.
+          </div>
         </div>
       </div>`;
   }
@@ -442,8 +555,9 @@ async function loadWAStatus() {
 
 async function resetWASession() {
   if (!confirm('¿Seguro? Tendrás que escanear el QR de nuevo.')) return;
+  _stopQrPolling();
   try {
-    await fetch((WA_API||API) + '/session', {method:'DELETE'});
+    await fetch((WA_API||API) + '/logout', {method:'POST'});
     alert('Sesión eliminada. Reinicia neolife-wa en Render y vuelve aquí para escanear el QR.');
     loadWAStatus();
   } catch { alert('Error al eliminar sesión'); }
@@ -577,76 +691,6 @@ function fmtHora(iso) {
   catch { return iso; }
 }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
-
-async function loadOpenAI() {
-  const el = document.getElementById('openai-content');
-  el.innerHTML = '<div class="loading"><span class="spinner"></span>Consultando OpenAI…</div>';
-  try {
-    const d = await (await fetch(API + '/openai/usage', {signal: AbortSignal.timeout(12000)})).json();
-
-    if (d.error) {
-      el.innerHTML = `
-        <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:32px;max-width:560px">
-          <div style="font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--red);margin-bottom:12px">⚠ No disponible</div>
-          <div style="color:var(--text);margin-bottom:8px">${esc(d.error)}</div>
-          ${d.hint ? `<div style="font-size:11px;color:var(--muted);margin-top:12px;line-height:1.6">${esc(d.hint)}</div>` : ''}
-          <a href="https://platform.openai.com/usage" target="_blank"
-             style="display:inline-block;margin-top:18px;padding:8px 18px;background:var(--gold);color:#0a0a0b;font-size:10px;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;border-radius:var(--radius)">
-            Ver uso en platform.openai.com ↗
-          </a>
-        </div>`;
-      return;
-    }
-
-    const pct     = d.porcentaje_uso || 0;
-    const barColor = pct >= 85 ? 'var(--red)' : pct >= 60 ? 'var(--amber)' : 'var(--green)';
-
-    el.innerHTML = `
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px">
-        <div class="kpi-card">
-          <div class="kpi-label">Límite mensual</div>
-          <div class="kpi-value">$<span style="color:var(--text)">${(d.limite_usd||0).toFixed(2)}</span></div>
-          <div class="kpi-sub">USD · ${esc(d.plan)}</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Usado este mes</div>
-          <div class="kpi-value kpi-accent">$${(d.usado_mes_usd||0).toFixed(4)}</div>
-          <div class="kpi-sub">${esc(d.periodo)}</div>
-        </div>
-        <div class="kpi-card">
-          <div class="kpi-label">Disponible</div>
-          <div class="kpi-value" style="color:${barColor}">$${(d.disponible_usd||0).toFixed(4)}</div>
-          <div class="kpi-sub">${pct}% utilizado</div>
-        </div>
-      </div>
-
-      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;max-width:700px">
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-          <span style="font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)">Uso del período</span>
-          <span style="font-size:11px;color:${barColor}">${pct}%</span>
-        </div>
-        <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">
-          <div style="height:100%;width:${Math.min(pct,100)}%;background:${barColor};border-radius:4px;transition:width .6s ease"></div>
-        </div>
-        <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:var(--muted)">
-          <span>$0</span><span>$${(d.limite_usd||0).toFixed(2)}</span>
-        </div>
-
-        ${d.acceso_activo ? `
-        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)">
-          Acceso activo hasta: <span style="color:var(--text)">${esc(d.acceso_activo)}</span>
-        </div>` : ''}
-
-        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);font-size:10px;color:var(--muted);line-height:1.7">
-          ℹ️ &nbsp;Los valores se actualizan con ~5 min de retraso en la API de OpenAI.<br>
-          Para detalles completos visita
-          <a href="https://platform.openai.com/usage" target="_blank" style="color:var(--gold)">platform.openai.com/usage ↗</a>
-        </div>
-      </div>`;
-  } catch(e) {
-    el.innerHTML = `<div class="empty">Error al conectar con el servidor — ¿está corriendo la API?<br><small style="color:var(--muted)">${esc(e.message)}</small></div>`;
-  }
-}
 
 document.getElementById('agenda-date').value = new Date().toISOString().split('T')[0];
 loadAll();
