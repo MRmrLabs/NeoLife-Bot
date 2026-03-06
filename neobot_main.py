@@ -30,6 +30,7 @@ from concurrent.futures import ThreadPoolExecutor
 from fastapi import FastAPI, Request, HTTPException
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 from google.oauth2.service_account import Credentials
 from telegram import Update
 from telegram.ext import Application, MessageHandler, filters, ContextTypes
@@ -679,7 +680,14 @@ async def api_cancelar_cita(cita_id: int):
     actualizar_cita(cita_id, {"estado":"CANCELADA"})
     return {"ok": True}
 
-
+@app.get("/", response_class=HTMLResponse)
+async def crm_home():
+    try:
+        with open("crm.html", "r", encoding="utf-8") as f:
+            return f.read()
+    except:
+        return "<h1>CRM no encontrado</h1>"
+      
 # =============================
 # RUN
 # =============================
