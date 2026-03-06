@@ -1,0 +1,77 @@
+# render.yaml — NeoLife Bot (BETA / sin disk)
+# SQLite en memoria → datos en Google Sheets como fuente de verdad
+# Redis gratis → sesión WhatsApp + cache Tokko
+# Costo: $0/mes en free tier (con sleep) o $14/mes en starter (sin sleep)
+
+services:
+
+  # ── 1. API Python ──────────────────────────────────────
+  - type: web
+    name: neolife-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    plan: free             # gratis — se duerme tras 15min sin uso (ok para beta)
+    region: oregon
+
+    # SIN disk — SQLite vive en /tmp (se resetea en cada deploy, ok para testing)
+
+    envVars:
+      - key: TOKKO_KEY
+        sync: false
+      - key: OPENAI_KEY
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: GOOGLE_CALENDAR_ID
+        value: miguelro.blescr@gmail.com
+      - key: ASESOR_EMAIL
+        value: miguelro.blescr@gmail.com
+      - key: SHEET_NAME
+        value: CLIENTES NEO
+      - key: DB_PATH
+        value: /tmp/neolife_crm.db     # temporal, se resetea — Sheets es el backup real
+      - key: GOOGLE_CREDENTIALS_JSON
+        sync: false
+      - key: WA_BRIDGE_URL
+        fromService:
+          name: neolife-wa
+          type: web
+          property: host
+      - key: REDIS_URL
+        fromService:
+          name: neolife-redis
+          type: redis
+          property: connectionString
+
+
+  # ── 2. WhatsApp Bridge ─────────────────────────────────
+  - type: web
+    name: neolife-wa
+    runtime: docker
+    dockerfilePath: ./Dockerfile.whatsapp
+    plan: free             # gratis para beta
+    region: oregon
+
+    envVars:
+      - key: PYTHON_API
+        fromService:
+          name: neolife-api
+          type: web
+          property: host
+      - key: REDIS_URL
+        fromService:
+          name: neolife-redis
+          type: redis
+          property: connectionString
+      - key: PUPPETEER_EXECUTABLE_PATH
+        value: /usr/bin/chromium
+      - key: PORT
+        value: 3001
+
+
+  # ── 3. Redis (GRATIS) ──────────────────────────────────
+  - type: redis
+    name: neolife-redis
+    plan: free             # 25MB gratis — más que suficiente
+    region: oregon
+    ipAllowList: []

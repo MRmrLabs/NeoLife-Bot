@@ -1,0 +1,25 @@
+# .github/workflows/deploy.yml
+# Auto-deploy a Render cuando haces push a main
+
+name: Deploy to Render
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy-api:
+    name: Deploy Python API
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy — neolife-api
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_API }}"
+
+  deploy-wa:
+    name: Deploy WhatsApp Bridge
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger Render deploy — neolife-wa
+        run: |
+          curl -X POST "${{ secrets.RENDER_DEPLOY_HOOK_WA }}"

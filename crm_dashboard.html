@@ -1,0 +1,572 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NeoLife CRM</title>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400;500;600&family=DM+Mono:wght@300;400&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0a0a0b;--surface:#111113;--card:#18181c;--border:#252528;
+    --gold:#c9a84c;--gold-dim:#7a6030;--text:#e8e4dc;--muted:#6b6860;
+    --green:#4caf82;--amber:#d4923a;--red:#c05050;--blue:#4a7fc1;--radius:4px;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:'DM Mono',monospace;background:var(--bg);color:var(--text);min-height:100vh;overflow-x:hidden}
+  .sidebar{position:fixed;left:0;top:0;bottom:0;width:220px;background:var(--surface);border-right:1px solid var(--border);display:flex;flex-direction:column;padding:28px 0;z-index:100}
+  .logo{padding:0 24px 32px;border-bottom:1px solid var(--border)}
+  .logo-text{font-family:'Cormorant Garamond',serif;font-size:22px;font-weight:600;color:var(--gold);letter-spacing:.08em}
+  .logo-sub{font-size:9px;color:var(--muted);letter-spacing:.2em;text-transform:uppercase;margin-top:2px}
+  .nav{margin-top:24px;flex:1}
+  .nav-item{display:flex;align-items:center;gap:10px;padding:10px 24px;font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);cursor:pointer;border-left:2px solid transparent;transition:all .2s}
+  .nav-item:hover{color:var(--text);background:rgba(201,168,76,.04)}
+  .nav-item.active{color:var(--gold);border-left-color:var(--gold);background:rgba(201,168,76,.06)}
+  .nav-icon{font-size:14px;width:16px;text-align:center}
+  .sidebar-footer{padding:16px 24px;border-top:1px solid var(--border);font-size:10px;color:var(--muted)}
+  .status-dot{display:inline-block;width:6px;height:6px;border-radius:50%;background:var(--green);margin-right:6px;animation:pulse 2s infinite}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+  .main{margin-left:220px;padding:32px 40px;min-height:100vh}
+  .page{display:none}.page.active{display:block}
+  .topbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:36px}
+  .page-title{font-family:'Cormorant Garamond',serif;font-size:28px;font-weight:300;color:var(--text);letter-spacing:.02em}
+  .topbar-right{display:flex;gap:12px;align-items:center}
+  .btn{padding:8px 18px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.12em;text-transform:uppercase;border-radius:var(--radius);cursor:pointer;border:none;transition:all .2s}
+  .btn-gold{background:var(--gold);color:#0a0a0b}.btn-gold:hover{background:#d4b05c}
+  .btn-ghost{background:transparent;color:var(--muted);border:1px solid var(--border)}.btn-ghost:hover{color:var(--text);border-color:var(--muted)}
+  .kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px}
+  .kpi-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px 22px;position:relative;overflow:hidden}
+  .kpi-card::before{content:'';position:absolute;top:0;left:0;right:0;height:1px;background:linear-gradient(90deg,transparent,var(--gold-dim),transparent)}
+  .kpi-label{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+  .kpi-value{font-family:'Cormorant Garamond',serif;font-size:36px;font-weight:300;color:var(--text);line-height:1}
+  .kpi-sub{font-size:9px;color:var(--muted);margin-top:6px}
+  .kpi-accent{color:var(--gold)}
+  .section-title{font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)}
+  .section-divider{border:none;border-top:1px solid var(--border);margin:20px 0}
+  .filters{display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+  .filter-btn{padding:5px 14px;font-family:'DM Mono',monospace;font-size:10px;letter-spacing:.1em;text-transform:uppercase;border-radius:20px;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;transition:all .2s}
+  .filter-btn:hover{color:var(--text);border-color:var(--muted)}
+  .filter-btn.active{border-color:var(--gold);color:var(--gold);background:rgba(201,168,76,.08)}
+  .table-wrap{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+  table{width:100%;border-collapse:collapse;font-size:11px}
+  thead tr{border-bottom:1px solid var(--border)}
+  th{padding:12px 16px;text-align:left;font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);font-weight:400}
+  td{padding:13px 16px;border-bottom:1px solid rgba(37,37,40,.5);color:var(--text);vertical-align:middle}
+  tr:last-child td{border-bottom:none}
+  tbody tr{cursor:pointer;transition:background .15s}tbody tr:hover{background:rgba(201,168,76,.03)}
+  .badge{display:inline-block;padding:2px 8px;border-radius:2px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;font-weight:500}
+  .badge-nuevo{background:rgba(74,127,193,.15);color:var(--blue);border:1px solid rgba(74,127,193,.3)}
+  .badge-contactado{background:rgba(212,146,58,.15);color:var(--amber);border:1px solid rgba(212,146,58,.3)}
+  .badge-cita{background:rgba(201,168,76,.15);color:var(--gold);border:1px solid rgba(201,168,76,.3)}
+  .badge-cierre{background:rgba(76,175,130,.15);color:var(--green);border:1px solid rgba(76,175,130,.3)}
+  .badge-perdido{background:rgba(192,80,80,.15);color:var(--red);border:1px solid rgba(192,80,80,.3)}
+  .ptag{display:inline-block;padding:2px 7px;border-radius:2px;font-size:8px;letter-spacing:.14em;text-transform:uppercase;font-weight:600}
+  .ptag-ALTA{background:rgba(192,80,80,.15);color:var(--red);border:1px solid rgba(192,80,80,.3)}
+  .ptag-MEDIA{background:rgba(212,146,58,.15);color:var(--amber);border:1px solid rgba(212,146,58,.3)}
+  .ptag-BAJA{background:rgba(107,104,96,.15);color:var(--muted);border:1px solid rgba(107,104,96,.3)}
+  .nivel-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:5px}
+  .nivel-FRIO{background:var(--blue)}.nivel-TIBIO{background:var(--amber)}
+  .nivel-CALIENTE{background:var(--red);box-shadow:0 0 6px rgba(192,80,80,.5)}
+  .modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,.75);z-index:200;backdrop-filter:blur(4px)}
+  .modal-overlay.open{display:flex;align-items:center;justify-content:center}
+  .modal{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);width:720px;max-height:88vh;overflow-y:auto;padding:32px;position:relative}
+  .modal::before{content:'';position:absolute;top:0;left:0;right:0;height:2px;background:linear-gradient(90deg,transparent,var(--gold),transparent)}
+  .modal-close{position:absolute;top:16px;right:20px;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer}
+  .modal-close:hover{color:var(--text)}
+  .modal-name{font-family:'Cormorant Garamond',serif;font-size:24px;font-weight:400}
+  .detail-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:20px}
+  .detail-item label{font-size:9px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted);display:block;margin-bottom:4px}
+  .detail-item span{font-size:12px;color:var(--text)}
+  .chat-history{max-height:220px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px 0}
+  .chat-msg{padding:8px 12px;border-radius:var(--radius);font-size:11px;line-height:1.5;max-width:85%}
+  .chat-msg.user{background:rgba(74,127,193,.1);border:1px solid rgba(74,127,193,.2);align-self:flex-end;color:#a8c4e0}
+  .chat-msg.assistant{background:rgba(201,168,76,.07);border:1px solid rgba(201,168,76,.15);align-self:flex-start}
+  .chat-time{font-size:8px;color:var(--muted);margin-top:2px;text-align:right}
+  .seguimiento-form{display:flex;gap:8px;margin-top:12px}
+  .seg-select,.seg-input{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'DM Mono',monospace;font-size:11px;padding:7px 10px}
+  .seg-select{width:140px}.seg-input{flex:1}
+  .seg-select:focus,.seg-input:focus{outline:none;border-color:var(--gold-dim)}
+  .status-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+  .status-opt{padding:4px 12px;border-radius:2px;font-size:9px;letter-spacing:.12em;text-transform:uppercase;border:1px solid var(--border);background:transparent;color:var(--muted);cursor:pointer;font-family:'DM Mono',monospace;transition:all .15s}
+  .status-opt.selected{background:rgba(201,168,76,.12);border-color:var(--gold);color:var(--gold)}
+  .kanban{display:grid;grid-template-columns:repeat(5,1fr);gap:16px;align-items:start}
+  .kanban-col{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:14px}
+  .kanban-header{font-size:9px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
+  .kanban-count{background:var(--card);border:1px solid var(--border);border-radius:10px;padding:1px 7px;font-size:10px;color:var(--text)}
+  .kanban-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:10px 12px;margin-bottom:8px;cursor:pointer;transition:border-color .2s,transform .15s}
+  .kanban-card:hover{border-color:var(--gold-dim);transform:translateY(-1px)}
+  .kanban-name{font-size:12px;margin-bottom:3px}.kanban-detail{font-size:10px;color:var(--muted);margin-bottom:3px}
+  .agenda-grid{display:grid;grid-template-columns:1fr 1fr;gap:20px}
+  .cita-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:18px 20px;border-left:3px solid var(--gold);transition:border-color .2s}
+  .cita-card:hover{border-left-color:#d4b05c}
+  .cita-time{font-family:'Cormorant Garamond',serif;font-size:22px;color:var(--gold);margin-bottom:6px}
+  .cita-client{font-size:13px;margin-bottom:4px}.cita-meta{font-size:10px;color:var(--muted)}
+  .cita-meet{font-size:10px;color:var(--blue);margin-top:6px;text-decoration:none;display:inline-block}
+  .cita-meet:hover{color:#7aaad8}
+  .wa-card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:20px 24px;display:flex;align-items:center;gap:16px;margin-bottom:20px}
+  ::-webkit-scrollbar{width:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--border);border-radius:2px}
+  .loading{display:flex;align-items:center;justify-content:center;padding:60px;color:var(--muted);font-size:11px;letter-spacing:.1em}
+  .spinner{width:16px;height:16px;border:1px solid var(--border);border-top-color:var(--gold);border-radius:50%;animation:spin .8s linear infinite;margin-right:10px}
+  @keyframes spin{to{transform:rotate(360deg)}}
+  .empty{padding:40px;text-align:center;color:var(--muted);font-size:11px}
+  textarea{resize:none}
+</style>
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="logo">
+    <div class="logo-text">NeoLife</div>
+    <div class="logo-sub">CRM · Inmobiliaria</div>
+  </div>
+  <nav class="nav">
+    <div class="nav-item active" onclick="showPage('dashboard',this)"><span class="nav-icon">◈</span> Dashboard</div>
+    <div class="nav-item" onclick="showPage('leads',this)"><span class="nav-icon">◉</span> Leads</div>
+    <div class="nav-item" onclick="showPage('pipeline',this)"><span class="nav-icon">◫</span> Pipeline</div>
+    <div class="nav-item" onclick="showPage('agenda',this)"><span class="nav-icon">◷</span> Agenda</div>
+    <div class="nav-item" onclick="showPage('whatsapp',this)"><span class="nav-icon">◎</span> WhatsApp</div>
+  </nav>
+  <div class="sidebar-footer">
+    <span class="status-dot" id="bot-dot"></span>
+    <span id="bot-status-txt">Verificando…</span>
+  </div>
+</aside>
+
+<main class="main">
+
+  <!-- DASHBOARD -->
+  <div id="page-dashboard" class="page active">
+    <div class="topbar">
+      <h1 class="page-title">Dashboard</h1>
+      <div class="topbar-right"><button class="btn btn-ghost" onclick="loadAll()">↻ Actualizar</button></div>
+    </div>
+    <div class="kpi-grid">
+      <div class="kpi-card"><div class="kpi-label">Total Leads</div><div class="kpi-value kpi-accent" id="kpi-total">—</div><div class="kpi-sub">Todos los canales</div></div>
+      <div class="kpi-card"><div class="kpi-label">Citas Hoy</div><div class="kpi-value" id="kpi-citas">—</div><div class="kpi-sub">Pendientes + confirmadas</div></div>
+      <div class="kpi-card"><div class="kpi-label">Alta Prioridad</div><div class="kpi-value" id="kpi-alta">—</div><div class="kpi-sub">Requieren atención</div></div>
+      <div class="kpi-card"><div class="kpi-label">Cierres</div><div class="kpi-value" id="kpi-cierres">—</div><div class="kpi-sub">Acumulado</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+      <div class="table-wrap" style="padding:20px"><div class="section-title" style="margin-bottom:16px">Pipeline por estado</div><div id="estado-bars"><div class="loading"><span class="spinner"></span>Cargando…</div></div></div>
+      <div class="table-wrap" style="padding:20px"><div class="section-title" style="margin-bottom:16px">Por prioridad</div><div id="prioridad-bars"><div class="loading"><span class="spinner"></span>Cargando…</div></div></div>
+    </div>
+  </div>
+
+  <!-- LEADS -->
+  <div id="page-leads" class="page">
+    <div class="topbar">
+      <h1 class="page-title">Leads</h1>
+      <div class="topbar-right"><button class="btn btn-ghost" id="btn-alta" onclick="toggleAltaPrioridad()">🔴 Alta prioridad</button></div>
+    </div>
+    <div class="filters">
+      <button class="filter-btn active" onclick="filterLeads(null,this)">Todos</button>
+      <button class="filter-btn" onclick="filterLeads('NUEVO',this)">Nuevo</button>
+      <button class="filter-btn" onclick="filterLeads('CONTACTADO',this)">Contactado</button>
+      <button class="filter-btn" onclick="filterLeads('CITA',this)">Cita</button>
+      <button class="filter-btn" onclick="filterLeads('CIERRE',this)">Cierre</button>
+      <button class="filter-btn" onclick="filterLeads('PERDIDO',this)">Perdido</button>
+    </div>
+    <div class="table-wrap"><div id="leads-table-body"><div class="loading"><span class="spinner"></span>Cargando leads…</div></div></div>
+  </div>
+
+  <!-- PIPELINE -->
+  <div id="page-pipeline" class="page">
+    <div class="topbar"><h1 class="page-title">Pipeline</h1></div>
+    <div class="kanban" id="kanban-board"><div class="loading" style="grid-column:1/-1"><span class="spinner"></span>Cargando…</div></div>
+  </div>
+
+  <!-- AGENDA -->
+  <div id="page-agenda" class="page">
+    <div class="topbar">
+      <h1 class="page-title">Agenda</h1>
+      <div class="topbar-right"><input type="date" id="agenda-date" style="background:var(--card);border:1px solid var(--border);color:var(--text);padding:7px 12px;border-radius:var(--radius);font-family:'DM Mono',monospace;font-size:11px" onchange="loadAgenda()"></div>
+    </div>
+    <div id="agenda-content"><div class="loading"><span class="spinner"></span>Cargando…</div></div>
+  </div>
+
+  <!-- WHATSAPP -->
+  <div id="page-whatsapp" class="page">
+    <div class="topbar">
+      <h1 class="page-title">WhatsApp</h1>
+      <div class="topbar-right">
+        <button class="btn btn-ghost" onclick="loadWAStatus()">↻ Verificar</button>
+        <button class="btn btn-ghost" onclick="resetWASession()" style="color:var(--red);border-color:var(--red)">⚠ Reset sesión</button>
+      </div>
+    </div>
+    <div id="wa-content"><div class="loading"><span class="spinner"></span>Verificando…</div></div>
+  </div>
+
+</main>
+
+<!-- MODAL -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+  <div class="modal">
+    <button class="modal-close" onclick="document.getElementById('modal-overlay').classList.remove('open')">✕</button>
+    <div id="modal-body"><div class="loading"><span class="spinner"></span></div></div>
+  </div>
+</div>
+
+<script>
+// ── CONFIG ──
+// Local:  dejar como ''  (el HTML se sirve desde el mismo puerto 8000)
+// Render: cambiar a 'https://neolife-api.onrender.com'
+const API    = '';
+const WA_API = ''; // 'https://neolife-wa.onrender.com'
+
+let currentFilter    = null;
+let currentPrioridad = null;
+
+function showPage(name, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + name).classList.add('active');
+  el.classList.add('active');
+  if (name === 'leads')    loadLeads(currentFilter);
+  if (name === 'pipeline') loadPipeline();
+  if (name === 'agenda')   loadAgenda();
+  if (name === 'whatsapp') loadWAStatus();
+}
+
+async function loadAll() {
+  checkBotStatus();
+  await Promise.all([loadStats(), loadLeads(null)]);
+}
+
+async function checkBotStatus() {
+  try {
+    const r = await fetch(API + '/crm/stats', { signal: AbortSignal.timeout(4000) });
+    if (r.ok) {
+      document.getElementById('bot-dot').style.background = 'var(--green)';
+      document.getElementById('bot-status-txt').textContent = 'Bot activo';
+    } else throw new Error();
+  } catch {
+    document.getElementById('bot-dot').style.background = 'var(--red)';
+    document.getElementById('bot-status-txt').textContent = 'Bot offline';
+  }
+}
+
+async function loadStats() {
+  try {
+    const d = await (await fetch(API + '/crm/stats')).json();
+    document.getElementById('kpi-total').textContent  = d.total_leads || 0;
+    document.getElementById('kpi-citas').textContent  = d.citas_hoy   || 0;
+    document.getElementById('kpi-alta').textContent   = d.por_prioridad?.ALTA  || 0;
+    document.getElementById('kpi-cierres').textContent= d.por_estado?.CIERRE   || 0;
+
+    const estados = d.por_estado || {};
+    const totE = Object.values(estados).reduce((a,b)=>a+b,0)||1;
+    const colE = {NUEVO:'var(--blue)',CONTACTADO:'var(--amber)',CITA:'var(--gold)',CIERRE:'var(--green)',PERDIDO:'var(--red)'};
+    document.getElementById('estado-bars').innerHTML = Object.entries(estados).map(([k,v])=>`
+      <div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px">
+          <span style="color:var(--muted);letter-spacing:.12em;text-transform:uppercase">${k}</span><span>${v}</span>
+        </div>
+        <div style="background:var(--border);border-radius:2px;height:4px;overflow:hidden">
+          <div style="background:${colE[k]||'var(--gold)'};height:100%;width:${(v/totE*100).toFixed(1)}%;transition:width .6s;border-radius:2px"></div>
+        </div>
+      </div>`).join('') || '<div class="empty">Sin datos</div>';
+
+    const prios = d.por_prioridad || {};
+    const totP  = Object.values(prios).reduce((a,b)=>a+b,0)||1;
+    const colP  = {ALTA:'var(--red)',MEDIA:'var(--amber)',BAJA:'var(--muted)'};
+    document.getElementById('prioridad-bars').innerHTML = ['ALTA','MEDIA','BAJA'].map(k => {
+      const v = prios[k]||0;
+      return `<div style="margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;font-size:10px;margin-bottom:4px">
+          <span style="color:${colP[k]};letter-spacing:.12em;text-transform:uppercase">${k}</span><span>${v}</span>
+        </div>
+        <div style="background:var(--border);border-radius:2px;height:4px;overflow:hidden">
+          <div style="background:${colP[k]};height:100%;width:${(v/totP*100).toFixed(1)}%;transition:width .6s;border-radius:2px"></div>
+        </div>
+      </div>`;}).join('');
+  } catch(e) { console.error(e); }
+}
+
+async function loadLeads(estado=null, prioridad=null) {
+  currentFilter = estado; currentPrioridad = prioridad;
+  let url = API + '/crm/leads?limit=100';
+  if (estado)    url += `&estado=${estado}`;
+  if (prioridad) url += `&prioridad=${prioridad}`;
+  try {
+    const leads = await (await fetch(url)).json();
+    renderLeadsTable(leads);
+  } catch {
+    document.getElementById('leads-table-body').innerHTML = '<div class="empty">Error al cargar — ¿está corriendo el servidor?</div>';
+  }
+}
+
+function filterLeads(estado, btn) {
+  document.querySelectorAll('.filter-btn').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  loadLeads(estado, null);
+}
+
+function toggleAltaPrioridad() {
+  const btn = document.getElementById('btn-alta');
+  if (currentPrioridad === 'ALTA') {
+    btn.style.opacity = '1'; loadLeads(currentFilter, null);
+  } else {
+    btn.style.opacity = '.5'; loadLeads(currentFilter, 'ALTA');
+  }
+}
+
+function renderLeadsTable(leads) {
+  if (!leads.length) {
+    document.getElementById('leads-table-body').innerHTML = '<div class="empty">No hay leads con este filtro</div>';
+    return;
+  }
+  const rows = leads.map(l => `
+    <tr onclick="openLead(${l.id})">
+      <td>
+        <div style="font-size:12px">${l.nombre_cliente||'<span style="color:var(--muted)">Sin nombre</span>'}</div>
+        <div style="font-size:9px;color:var(--muted);margin-top:2px">${l.canal||'wa'} · ${fmtDate(l.creado_en)}</div>
+      </td>
+      <td>${l.numero||'<span style="color:var(--border)">—</span>'}</td>
+      <td>${l.tipo_operacion||'<span style="color:var(--border)">—</span>'}</td>
+      <td>${l.tipo_propiedad||'<span style="color:var(--border)">—</span>'}</td>
+      <td>${l.tipo_financiamiento||'<span style="color:var(--border)">—</span>'}</td>
+      <td>${l.plazo_busqueda||'<span style="color:var(--border)">—</span>'}</td>
+      <td style="color:var(--muted)">${l.fecha_seguimiento||'—'}</td>
+      <td><span class="badge badge-${(l.estado||'nuevo').toLowerCase()}">${l.estado||'NUEVO'}</span></td>
+      <td><span class="ptag ptag-${l.prioridad||'BAJA'}">${l.prioridad||'BAJA'}</span></td>
+      <td style="color:var(--muted);font-size:10px">${l.asesor_nombre||'—'}</td>
+    </tr>`).join('');
+  document.getElementById('leads-table-body').innerHTML = `
+    <table>
+      <thead><tr>
+        <th>Cliente</th><th>Número</th><th>Operación</th><th>Propiedad</th>
+        <th>Financiamiento</th><th>Plazo</th><th>Último contacto</th>
+        <th>Estado</th><th>Prioridad</th><th>Asesor</th>
+      </tr></thead>
+      <tbody>${rows}</tbody>
+    </table>`;
+}
+
+async function loadPipeline() {
+  try {
+    const leads = await (await fetch(API + '/crm/leads?limit=200')).json();
+    document.getElementById('kanban-board').innerHTML = ['NUEVO','CONTACTADO','CITA','CIERRE','PERDIDO'].map(est => {
+      const items = leads.filter(l=>l.estado===est);
+      const cards = items.map(l=>`
+        <div class="kanban-card" onclick="openLead(${l.id})">
+          <div class="kanban-name">${l.nombre_cliente||'Sin nombre'}</div>
+          <div class="kanban-detail">${l.tipo_operacion||'—'} · ${l.tipo_propiedad||'—'}</div>
+          <div class="kanban-detail">${l.tipo_financiamiento||''}</div>
+          <div style="margin-top:6px;display:flex;align-items:center;gap:6px">
+            <span class="ptag ptag-${l.prioridad||'BAJA'}">${l.prioridad||'BAJA'}</span>
+            <span style="font-size:9px;color:var(--muted)">${l.fecha_seguimiento||''}</span>
+          </div>
+        </div>`).join('');
+      return `<div class="kanban-col">
+        <div class="kanban-header">${est}<span class="kanban-count">${items.length}</span></div>
+        ${cards||'<div style="font-size:10px;color:var(--muted);text-align:center;padding:12px">Vacío</div>'}
+      </div>`;
+    }).join('');
+  } catch {
+    document.getElementById('kanban-board').innerHTML = '<div class="empty" style="grid-column:1/-1">Error al cargar</div>';
+  }
+}
+
+async function loadAgenda() {
+  const fecha = document.getElementById('agenda-date').value || new Date().toISOString().split('T')[0];
+  try {
+    const data = await (await fetch(API + `/calendar/agenda?fecha=${fecha}`)).json();
+    const evs  = data.eventos||[];
+    document.getElementById('agenda-content').innerHTML = evs.length
+      ? `<div class="agenda-grid">${evs.map(ev=>`
+          <div class="cita-card">
+            <div class="cita-time">${fmtHora(ev.inicio)}</div>
+            <div class="cita-client">${ev.titulo}</div>
+            <div class="cita-meta">${(ev.asistentes||[]).join(' · ')}</div>
+            ${ev.meet?`<a href="${ev.meet}" target="_blank" class="cita-meet">↗ Google Meet</a>`:''}
+          </div>`).join('')}</div>`
+      : `<div class="empty">No hay eventos para ${fecha}</div>`;
+  } catch {
+    document.getElementById('agenda-content').innerHTML = '<div class="empty">Error al cargar agenda</div>';
+  }
+}
+
+async function loadWAStatus() {
+  document.getElementById('wa-content').innerHTML = '<div class="loading"><span class="spinner"></span>Verificando…</div>';
+  try {
+    const data = await (await fetch((WA_API||API) + '/status', {signal:AbortSignal.timeout(6000)})).json();
+    if (data.connected) {
+      document.getElementById('wa-content').innerHTML = `
+        <div class="wa-card">
+          <span style="font-size:28px">✅</span>
+          <div>
+            <div style="font-size:13px;margin-bottom:4px">WhatsApp conectado</div>
+            <div style="font-size:10px;color:var(--muted)">Sesión activa en Redis · ${data.timestamp?fmtDate(data.timestamp):''}</div>
+          </div>
+        </div>`;
+    } else if (data.qr) {
+      document.getElementById('wa-content').innerHTML = `
+        <div class="wa-card" style="flex-direction:column;align-items:flex-start;gap:14px">
+          <div style="color:var(--amber);font-size:12px;font-weight:500">⚠ Sin sesión — escanea el QR para conectar</div>
+          <div style="font-size:10px;color:var(--muted);line-height:1.8">
+            1. Copia el texto de abajo<br>
+            2. Ve a <a href="https://qr-code-generator.com" target="_blank" style="color:var(--blue)">qr-code-generator.com</a> y pégalo para generar la imagen<br>
+            3. En tu WhatsApp → <strong>Dispositivos vinculados</strong> → Escanea<br>
+            4. La sesión se guarda en Redis automáticamente ✓
+          </div>
+          <textarea id="qr-txt" style="width:100%;height:80px;background:var(--surface);border:1px solid var(--border);color:var(--muted);font-family:'DM Mono',monospace;font-size:9px;padding:8px;border-radius:var(--radius)" readonly>${data.qr}</textarea>
+          <button class="btn btn-ghost" onclick="document.getElementById('qr-txt').select();document.execCommand('copy');this.textContent='✓ Copiado'">📋 Copiar QR</button>
+        </div>`;
+    } else {
+      document.getElementById('wa-content').innerHTML = '<div class="empty">Estado desconocido — revisa los logs del bridge en Render</div>';
+    }
+  } catch {
+    document.getElementById('wa-content').innerHTML = `
+      <div class="wa-card">
+        <span style="font-size:28px">❌</span>
+        <div>
+          <div style="font-size:13px;margin-bottom:4px;color:var(--red)">Bridge WhatsApp offline</div>
+          <div style="font-size:10px;color:var(--muted)">Verifica que el servicio <strong>neolife-wa</strong> esté corriendo en Render</div>
+        </div>
+      </div>`;
+  }
+}
+
+async function resetWASession() {
+  if (!confirm('¿Seguro? Tendrás que escanear el QR de nuevo.')) return;
+  try {
+    await fetch((WA_API||API) + '/session', {method:'DELETE'});
+    alert('Sesión eliminada. Reinicia neolife-wa en Render y vuelve aquí para escanear el QR.');
+    loadWAStatus();
+  } catch { alert('Error al eliminar sesión'); }
+}
+
+async function openLead(id) {
+  document.getElementById('modal-overlay').classList.add('open');
+  document.getElementById('modal-body').innerHTML = '<div class="loading"><span class="spinner"></span>Cargando…</div>';
+  try {
+    const data = await (await fetch(API + `/crm/leads/${id}`)).json();
+    const l    = data.lead;
+    const hist = data.historial    || [];
+    const segs = data.seguimientos || [];
+
+    const statusBtns = ['NUEVO','CONTACTADO','CITA','CIERRE','PERDIDO'].map(est=>
+      `<button class="status-opt ${l.estado===est?'selected':''}" onclick="cambiarEstado(${id},'${est}',this)">${est}</button>`
+    ).join('');
+
+    const chatHTML = hist.length
+      ? hist.map(h=>`<div class="chat-msg ${h.rol}">${esc(h.mensaje)}<div class="chat-time">${fmtDate(h.creado_en)}</div></div>`).join('')
+      : '<div style="color:var(--muted);font-size:11px">Sin historial</div>';
+
+    const segsHTML = segs.length
+      ? segs.map(s=>`
+          <div style="padding:8px 0;border-bottom:1px solid var(--border)">
+            <span style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">${s.tipo}</span>
+            <span style="float:right;font-size:9px;color:var(--muted)">${fmtDate(s.creado_en)}</span>
+            <div style="font-size:11px;margin-top:4px">${esc(s.descripcion)}</div>
+          </div>`).join('')
+      : '<div style="color:var(--muted);font-size:11px">Sin seguimientos</div>';
+
+    document.getElementById('modal-body').innerHTML = `
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:20px">
+        <div>
+          <div class="modal-name">${l.nombre_cliente||'Sin nombre'}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:4px">
+            <span class="nivel-dot nivel-${l.lead_nivel||'FRIO'}"></span>
+            ${l.lead_nivel||'FRIO'} · Score ${l.lead_score||0} · ${l.canal||'wa'}
+          </div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span class="badge badge-${(l.estado||'nuevo').toLowerCase()}">${l.estado||'NUEVO'}</span>
+          <span class="ptag ptag-${l.prioridad||'BAJA'}">${l.prioridad||'BAJA'}</span>
+        </div>
+      </div>
+
+      <div class="detail-grid">
+        <div class="detail-item"><label>Número</label><span>${l.numero||'—'}</span></div>
+        <div class="detail-item"><label>Tipo Operación</label><span>${l.tipo_operacion||'—'}</span></div>
+        <div class="detail-item"><label>Tipo Propiedad</label><span>${l.tipo_propiedad||'—'}</span></div>
+        <div class="detail-item"><label>Financiamiento</label><span>${l.tipo_financiamiento||'—'}</span></div>
+        <div class="detail-item"><label>Plazo Búsqueda</label><span>${l.plazo_busqueda||'—'}</span></div>
+        <div class="detail-item"><label>Último Contacto</label><span>${l.fecha_seguimiento||'—'}</span></div>
+        <div class="detail-item"><label>Asesor</label><span>${l.asesor_nombre||'—'}</span></div>
+        <div class="detail-item"><label>Canal</label><span>${l.canal||'—'}</span></div>
+        <div class="detail-item"><label>Email</label><span>${l.email||'—'}</span></div>
+      </div>
+
+      ${l.notas?`<div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:12px;margin-bottom:16px;font-size:11px;line-height:1.6;color:var(--muted)">
+        <span style="font-size:9px;letter-spacing:.15em;text-transform:uppercase;display:block;margin-bottom:6px">Notas</span>
+        ${esc(l.notas)}</div>`:''}
+
+      <hr class="section-divider">
+      <div class="section-title" style="margin-bottom:8px">Cambiar estado</div>
+      <div class="status-row">${statusBtns}</div>
+
+      <hr class="section-divider">
+      <div class="section-title" style="margin-bottom:12px">Conversación</div>
+      <div class="chat-history" id="chat-${id}">${chatHTML}</div>
+
+      <hr class="section-divider">
+      <div class="section-title" style="margin-bottom:12px">Seguimientos</div>
+      <div id="segs-${id}">${segsHTML}</div>
+      <div class="seguimiento-form">
+        <select class="seg-select" id="seg-tipo-${id}">
+          <option value="nota">📝 Nota</option>
+          <option value="llamada">📞 Llamada</option>
+          <option value="whatsapp">💬 WhatsApp</option>
+          <option value="email">✉️ Email</option>
+          <option value="visita">🏠 Visita</option>
+        </select>
+        <input class="seg-input" id="seg-desc-${id}" placeholder="Agregar nota…" onkeydown="if(event.key==='Enter')agregarSeg(${id})">
+        <button class="btn btn-gold" onclick="agregarSeg(${id})">+</button>
+      </div>`;
+
+    setTimeout(()=>{const c=document.getElementById(`chat-${id}`);if(c)c.scrollTop=c.scrollHeight},50);
+  } catch(e) {
+    document.getElementById('modal-body').innerHTML = `<div class="empty">Error: ${e.message}</div>`;
+  }
+}
+
+async function cambiarEstado(leadId, estado, btn) {
+  try {
+    await fetch(API+`/crm/leads/${leadId}/estado`,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({estado})});
+    document.querySelectorAll('.status-opt').forEach(b=>b.classList.remove('selected'));
+    btn.classList.add('selected');
+    loadLeads(currentFilter); loadStats();
+  } catch { alert('Error al actualizar estado'); }
+}
+
+async function agregarSeg(leadId) {
+  const tipo = document.getElementById(`seg-tipo-${leadId}`).value;
+  const desc = document.getElementById(`seg-desc-${leadId}`).value.trim();
+  if (!desc) return;
+  try {
+    await fetch(API+`/crm/leads/${leadId}/seguimiento`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tipo,descripcion:desc,asesor_id:1})});
+    document.getElementById(`seg-desc-${leadId}`).value = '';
+    const data = await (await fetch(API+`/crm/leads/${leadId}`)).json();
+    document.getElementById(`segs-${leadId}`).innerHTML = (data.seguimientos||[]).map(s=>`
+      <div style="padding:8px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:9px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">${s.tipo}</span>
+        <span style="float:right;font-size:9px;color:var(--muted)">${fmtDate(s.creado_en)}</span>
+        <div style="font-size:11px;margin-top:4px">${esc(s.descripcion)}</div>
+      </div>`).join('') || '<div style="color:var(--muted);font-size:11px">Sin seguimientos</div>';
+  } catch { alert('Error al guardar'); }
+}
+
+function closeModal(e) {
+  if (e.target===document.getElementById('modal-overlay'))
+    document.getElementById('modal-overlay').classList.remove('open');
+}
+
+function fmtDate(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleString('es-MX',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}); }
+  catch { return iso; }
+}
+function fmtHora(iso) {
+  if (!iso) return '—';
+  try { return new Date(iso).toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'}); }
+  catch { return iso; }
+}
+function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+document.getElementById('agenda-date').value = new Date().toISOString().split('T')[0];
+loadAll();
+setInterval(checkBotStatus, 30000);
+</script>
+</body>
+</html>

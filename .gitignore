@@ -1,0 +1,32 @@
+# ── Secretos — NUNCA subir a GitHub ──────────────
+NeoBot.env
+.env
+credentials.json
+*.json.secret
+
+# ── WhatsApp sesión local ─────────────────────────
+.wwebjs_auth/
+.wwebjs_cache/
+
+# ── Base de datos local ───────────────────────────
+*.db
+*.db-wal
+*.db-shm
+
+# ── Python ────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+venv/
+.venv/
+*.egg-info/
+dist/
+build/
+
+# ── Node ──────────────────────────────────────────
+node_modules/
+npm-debug.log*
+
+# ── OS ────────────────────────────────────────────
+.DS_Store
+Thumbs.db
