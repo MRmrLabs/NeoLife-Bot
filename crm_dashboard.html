@@ -124,6 +124,7 @@
     <div class="nav-item" onclick="showPage('pipeline',this)"><span class="nav-icon">◫</span> Pipeline</div>
     <div class="nav-item" onclick="showPage('agenda',this)"><span class="nav-icon">◷</span> Agenda</div>
     <div class="nav-item" onclick="showPage('whatsapp',this)"><span class="nav-icon">◎</span> WhatsApp</div>
+    <div class="nav-item" onclick="showPage('openai',this)"><span class="nav-icon">◈</span> OpenAI</div>
   </nav>
   <div class="sidebar-footer">
     <span class="status-dot" id="bot-dot"></span>
@@ -195,6 +196,18 @@
     <div id="wa-content"><div class="loading"><span class="spinner"></span>Verificando…</div></div>
   </div>
 
+  <!-- ── OpenAI ── -->
+  <div id="page-openai" class="page">
+    <div class="topbar">
+      <h1 class="page-title">Créditos OpenAI</h1>
+      <div class="topbar-right">
+        <button class="btn btn-ghost" onclick="loadOpenAI()">↻ Actualizar</button>
+        <a href="https://platform.openai.com/usage" target="_blank" class="btn btn-ghost" style="text-decoration:none">↗ Ver en OpenAI</a>
+      </div>
+    </div>
+    <div id="openai-content"><div class="loading"><span class="spinner"></span>Consultando…</div></div>
+  </div>
+
 </main>
 
 <!-- MODAL -->
@@ -224,6 +237,7 @@ function showPage(name, el) {
   if (name === 'pipeline') loadPipeline();
   if (name === 'agenda')   loadAgenda();
   if (name === 'whatsapp') loadWAStatus();
+  if (name === 'openai')   loadOpenAI();
 }
 
 async function loadAll() {
@@ -563,6 +577,76 @@ function fmtHora(iso) {
   catch { return iso; }
 }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+async function loadOpenAI() {
+  const el = document.getElementById('openai-content');
+  el.innerHTML = '<div class="loading"><span class="spinner"></span>Consultando OpenAI…</div>';
+  try {
+    const d = await (await fetch(API + '/openai/usage', {signal: AbortSignal.timeout(12000)})).json();
+
+    if (d.error) {
+      el.innerHTML = `
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:32px;max-width:560px">
+          <div style="font-size:11px;letter-spacing:.15em;text-transform:uppercase;color:var(--red);margin-bottom:12px">⚠ No disponible</div>
+          <div style="color:var(--text);margin-bottom:8px">${esc(d.error)}</div>
+          ${d.hint ? `<div style="font-size:11px;color:var(--muted);margin-top:12px;line-height:1.6">${esc(d.hint)}</div>` : ''}
+          <a href="https://platform.openai.com/usage" target="_blank"
+             style="display:inline-block;margin-top:18px;padding:8px 18px;background:var(--gold);color:#0a0a0b;font-size:10px;letter-spacing:.12em;text-transform:uppercase;text-decoration:none;border-radius:var(--radius)">
+            Ver uso en platform.openai.com ↗
+          </a>
+        </div>`;
+      return;
+    }
+
+    const pct     = d.porcentaje_uso || 0;
+    const barColor = pct >= 85 ? 'var(--red)' : pct >= 60 ? 'var(--amber)' : 'var(--green)';
+
+    el.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:28px">
+        <div class="kpi-card">
+          <div class="kpi-label">Límite mensual</div>
+          <div class="kpi-value">$<span style="color:var(--text)">${(d.limite_usd||0).toFixed(2)}</span></div>
+          <div class="kpi-sub">USD · ${esc(d.plan)}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Usado este mes</div>
+          <div class="kpi-value kpi-accent">$${(d.usado_mes_usd||0).toFixed(4)}</div>
+          <div class="kpi-sub">${esc(d.periodo)}</div>
+        </div>
+        <div class="kpi-card">
+          <div class="kpi-label">Disponible</div>
+          <div class="kpi-value" style="color:${barColor}">$${(d.disponible_usd||0).toFixed(4)}</div>
+          <div class="kpi-sub">${pct}% utilizado</div>
+        </div>
+      </div>
+
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:24px;max-width:700px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <span style="font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:var(--muted)">Uso del período</span>
+          <span style="font-size:11px;color:${barColor}">${pct}%</span>
+        </div>
+        <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden">
+          <div style="height:100%;width:${Math.min(pct,100)}%;background:${barColor};border-radius:4px;transition:width .6s ease"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:8px;font-size:10px;color:var(--muted)">
+          <span>$0</span><span>$${(d.limite_usd||0).toFixed(2)}</span>
+        </div>
+
+        ${d.acceso_activo ? `
+        <div style="margin-top:20px;padding-top:16px;border-top:1px solid var(--border);font-size:11px;color:var(--muted)">
+          Acceso activo hasta: <span style="color:var(--text)">${esc(d.acceso_activo)}</span>
+        </div>` : ''}
+
+        <div style="margin-top:16px;padding-top:16px;border-top:1px solid var(--border);font-size:10px;color:var(--muted);line-height:1.7">
+          ℹ️ &nbsp;Los valores se actualizan con ~5 min de retraso en la API de OpenAI.<br>
+          Para detalles completos visita
+          <a href="https://platform.openai.com/usage" target="_blank" style="color:var(--gold)">platform.openai.com/usage ↗</a>
+        </div>
+      </div>`;
+  } catch(e) {
+    el.innerHTML = `<div class="empty">Error al conectar con el servidor — ¿está corriendo la API?<br><small style="color:var(--muted)">${esc(e.message)}</small></div>`;
+  }
+}
 
 document.getElementById('agenda-date').value = new Date().toISOString().split('T')[0];
 loadAll();
