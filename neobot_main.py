@@ -683,7 +683,7 @@ async def api_cancelar_cita(cita_id: int):
 @app.get("/", response_class=HTMLResponse)
 async def crm_home():
     try:
-        with open("crm.html", "r", encoding="utf-8") as f:
+        with open("crm_dashboard.html", "r", encoding="utf-8") as f:
             return f.read()
     except:
         return "<h1>CRM no encontrado</h1>"
