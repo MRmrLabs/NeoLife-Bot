@@ -130,18 +130,36 @@ def guardar_en_sheets(lead: dict, event_data: dict = None):
     Si no, la agrega.
     """
     if not lead:
+        print("⚠️  [SHEETS] guardar_en_sheets llamado con lead vacío — omitiendo")
         return
+
+    print(f"📋 [SHEETS] Iniciando sync → lead_id={lead.get('id')} numero={lead.get('numero')} nombre={lead.get('nombre_cliente')}")
+
+    # Verificar credenciales
+    raw_creds = os.getenv("GOOGLE_CREDENTIALS_JSON")
+    if not raw_creds:
+        print("❌ [SHEETS] GOOGLE_CREDENTIALS_JSON no está definida en el entorno")
+        return
+    print(f"✅ [SHEETS] Credenciales encontradas ({len(raw_creds)} chars)")
+
     scopes = [
         "https://www.googleapis.com/auth/spreadsheets",
         "https://www.googleapis.com/auth/drive",
     ]
     try:
         creds = _get_google_creds(scopes)
-        gc    = gspread.authorize(creds)
-        ws    = gc.open(SHEET_NAME).sheet1
+        print(f"✅ [SHEETS] Credenciales Google OK — service_account: {getattr(creds, 'service_account_email', 'N/A')}")
+
+        gc = gspread.authorize(creds)
+        print(f"✅ [SHEETS] gspread autorizado — abriendo '{SHEET_NAME}'")
+
+        ws = gc.open(SHEET_NAME).sheet1
+        print(f"✅ [SHEETS] Sheet abierto — filas actuales: {ws.row_count}")
 
         # Crear cabecera si el sheet está vacío
-        if ws.row_count < 1 or not ws.row_values(1):
+        primera_fila = ws.row_values(1)
+        if not primera_fila:
+            print("⚠️  [SHEETS] Sheet vacío — creando cabecera")
             ws.append_row(SHEETS_HEADER)
 
         fila = [
@@ -155,21 +173,30 @@ def guardar_en_sheets(lead: dict, event_data: dict = None):
             lead.get("notas",                 ""),
             lead.get("prioridad",             "BAJA"),
         ]
+        print(f"📝 [SHEETS] Fila a escribir: {fila}")
 
         # Buscar si ya existe la fila por NUMERO
         numero = lead.get("numero", "")
         if numero:
+            print(f"🔍 [SHEETS] Buscando número existente: {numero}")
             celdas = ws.findall(numero)
             if celdas:
                 row_num = celdas[0].row
                 ws.update(f"A{row_num}:I{row_num}", [fila])
-                print(f"✅ Sheets actualizado fila {row_num}")
+                print(f"✅ [SHEETS] Fila {row_num} actualizada para {numero}")
                 return
+            else:
+                print(f"ℹ️  [SHEETS] Número {numero} no encontrado — agregando nueva fila")
 
         ws.append_row(fila)
-        print("✅ Sheets — nueva fila agregada")
+        print(f"✅ [SHEETS] Nueva fila agregada — lead {lead.get('id')}")
+
+    except gspread.exceptions.SpreadsheetNotFound:
+        print(f"❌ [SHEETS] Spreadsheet '{SHEET_NAME}' NO encontrado — verifica el nombre exacto y que la service account tenga acceso")
+    except gspread.exceptions.APIError as e:
+        print(f"❌ [SHEETS] Google API error: {e.response.status_code} — {e.response.text}")
     except Exception as e:
-        print("❌ Sheets error:", e)
+        print(f"❌ [SHEETS] Error inesperado: {type(e).__name__}: {e}")
 
 
 # =============================
@@ -225,15 +252,28 @@ def wa_send(numero: str, mensaje: str) -> bool:
     Envía mensaje via whatsapp-web.js bridge (Node.js).
     El número debe ser formato internacional sin +: 528341234567
     """
+    url = f"{WA_BRIDGE_URL}/send"
+    print(f"📤 [WA] Enviando a {numero} via {url} — msg: {mensaje[:60]}…")
     try:
         r = requests.post(
-            f"{WA_BRIDGE_URL}/send",
+            url,
             json={"number": numero, "message": mensaje},
             timeout=10,
         )
-        return r.status_code == 200
+        if r.status_code == 200:
+            print(f"✅ [WA] Enviado OK a {numero}")
+            return True
+        else:
+            print(f"❌ [WA] Bridge respondió {r.status_code}: {r.text[:200]}")
+            return False
+    except requests.exceptions.ConnectionError:
+        print(f"❌ [WA] No se pudo conectar al bridge en {WA_BRIDGE_URL} — ¿está corriendo neolife-wa?")
+        return False
+    except requests.exceptions.Timeout:
+        print(f"❌ [WA] Timeout al conectar con el bridge en {WA_BRIDGE_URL}")
+        return False
     except Exception as e:
-        print(f"❌ WA Bridge error: {e}")
+        print(f"❌ [WA] Error inesperado: {type(e).__name__}: {e}")
         return False
 
 
@@ -312,26 +352,36 @@ async def procesar_mensaje(
     canal:      str = "whatsapp",
 ) -> dict:
 
+    print(f"\n{'='*60}")
+    print(f"🔵 [MSG] session={session_id} canal={canal} nombre='{user_name}' numero='{numero}'")
+    print(f"🔵 [MSG] mensaje: '{user_msg[:120]}'")
+
     if len(user_msg.strip()) < 3:
+        print("⚠️  [MSG] Mensaje muy corto — descartado")
         return {"reply": "¿Me das un poco más de info para ayudarte mejor? 🙂", "extraction": {}}
     if es_inyeccion(user_msg):
+        print("🚫 [MSG] Posible prompt injection detectada — bloqueado")
         return {"reply": "Solo puedo ayudarte con temas inmobiliarios. 😊", "extraction": {}}
 
     state = session_state.get(session_id, {
         "turnos":0, "costo":0.0, "fase":"NORMAL",
         "intento_cita":False, "score":0, "lead_id":None,
     })
+    print(f"📊 [MSG] Estado sesión: turnos={state['turnos']} fase={state['fase']} score={state['score']}")
 
     # Upsert lead
     lead_id = state.get("lead_id")
     if not lead_id:
+        print(f"🆕 [MSG] Lead nuevo — creando en DB")
         lead_id = upsert_lead(session_id, {
             "canal": canal,
             "numero": numero or None,
             "nombre_cliente": user_name if user_name != "Cliente" else None,
         })
         state["lead_id"] = lead_id
+        print(f"✅ [MSG] Lead creado/obtenido → lead_id={lead_id}")
     else:
+        print(f"♻️  [MSG] Lead existente → lead_id={lead_id}")
         if numero or user_name != "Cliente":
             upsert_lead(session_id, {
                 "numero": numero or None,
@@ -368,18 +418,22 @@ async def procesar_mensaje(
     # Slots disponibles del calendario
     slots_texto = ""
     if state["fase"] == "CITA":
+        print(f"📅 [MSG] Fase CITA — consultando slots en Calendar")
         try:
             lead     = get_lead_by_id(lead_id)
             asesores = listar_asesores()
             asesor   = next((a for a in asesores if a["id"] == (lead or {}).get("asesor_id")), asesores[0] if asesores else None)
-            cal_id   = (asesor.get("asesor_calendar") or CALENDAR_ID) if asesor else CALENDAR_ID
+            raw_cal  = (asesor.get("asesor_calendar") or "") if asesor else ""
+            cal_id   = raw_cal if raw_cal and raw_cal != "primary" else CALENDAR_ID
+            print(f"📅 [MSG] calendar_id usado: '{cal_id}' (asesor: {asesor.get('nombre') if asesor else 'ninguno'})")
             opciones = proponer_slots(cal_id, dias_adelante=3, n_opciones=2)
+            print(f"📅 [MSG] Slots propuestos: {opciones}")
             if opciones:
                 slots_texto = "\n\nSLOTS LIBRES EN AGENDA DEL ASESOR (usa exactamente estos):\n"
                 for s in opciones:
                     slots_texto += f"- {s['fecha']} a las {s['hora']}\n"
         except Exception as e:
-            print(f"⚠️ Slots: {e}")
+            print(f"❌ [MSG] Error obteniendo slots: {type(e).__name__}: {e}")
 
     # Propiedades
     ctx_props = ""
@@ -429,6 +483,7 @@ Responde SOLO en JSON (sin texto fuera):
 }}
 """
 
+    print(f"🤖 [MSG] Llamando OpenAI gpt-4o-mini — historial: {len(history)} msgs — fase: {state['fase']}")
     try:
         resp = openai_client.chat.completions.create(
             model="gpt-4o-mini",
@@ -436,16 +491,22 @@ Responde SOLO en JSON (sin texto fuera):
             response_format={"type":"json_object"},
             timeout=15,
         )
+        tokens = resp.usage.total_tokens if resp.usage else 0
+        print(f"✅ [MSG] OpenAI respondió — tokens={tokens} costo≈${tokens * COSTO_TOKEN:.6f}")
     except openai.APITimeoutError:
+        print("❌ [MSG] OpenAI TIMEOUT (>15s)")
         return {"reply":"Disculpa, problema de conexión. ¿Puedes repetir? 🙏","extraction":{}}
     except openai.APIError as e:
-        print("❌ OpenAI:", e)
+        print(f"❌ [MSG] OpenAI APIError: {e}")
         return {"reply":"Error inesperado. Intenta de nuevo.","extraction":{}}
 
     contenido = json.loads(resp.choices[0].message.content)
+    print(f"📤 [MSG] Reply generado: '{contenido.get('reply','')[:80]}'")
     guardar_mensaje(lead_id, "assistant", contenido["reply"], canal)
 
     ext = contenido.get("extraction", {})
+    ext_limpio = {k:v for k,v in ext.items() if v}
+    print(f"🔍 [MSG] Extracción: {ext_limpio}")
 
     # Completar nombre y número si no llegaron en la extracción
     if not ext.get("nombre_cliente") and user_name != "Cliente":
@@ -481,20 +542,24 @@ Responde SOLO en JSON (sin texto fuera):
         "lead_nivel":          nivel,
     }
     datos_update = {k: v for k, v in datos_update.items() if v is not None}
+    print(f"💾 [MSG] Actualizando DB lead_id={lead_id}: {list(datos_update.keys())}")
     upsert_lead(session_id, datos_update)
 
     # Cita detectada → crear en Calendar + Sheets (background)
     if ext.get("fecha_cita") and ext.get("hora_cita"):
+        print(f"📅 [MSG] Cita detectada — {ext['fecha_cita']} {ext['hora_cita']} — lanzando tarea en background")
         asyncio.create_task(procesar_cita_automatica(lead_id, ext))
         state["fase"] = "HUMANO"
     elif ext.get("numero"):
+        print(f"📞 [MSG] Número capturado '{ext['numero']}' — sincronizando Sheets en background")
         actualizar_estado_lead(lead_id, "CONTACTADO")
         state["fase"] = "HUMANO"
-        # Sync Sheets al obtener número
         lead_upd = get_lead_by_id(lead_id)
         if lead_upd:
             loop = asyncio.get_running_loop()
             loop.run_in_executor(executor, guardar_en_sheets, lead_upd, None)
+        else:
+            print(f"⚠️  [MSG] No se encontró lead_id={lead_id} para sync Sheets")
 
     # Contadores
     tokens = resp.usage.total_tokens if resp.usage else 0
@@ -570,6 +635,7 @@ async def dashboard():
         raise HTTPException(404, "crm_dashboard.html no encontrado — asegúrate de que el archivo esté en el mismo directorio que neobot_main.py")
 
 
+
 # ── WhatsApp webhook (recibe mensajes del bridge Node.js)
 @app.post("/whatsapp/incoming")
 async def wa_incoming(req: Request):
@@ -579,14 +645,18 @@ async def wa_incoming(req: Request):
     Body: {"from": "528341234567@c.us", "body": "Hola", "name": "Marco"}
     """
     data    = await req.json()
-    wa_from = data.get("from","")                          # "528341234567@c.us"
+    wa_from = data.get("from","")
     numero  = wa_from.replace("@c.us","").replace("@s.whatsapp.net","")
     mensaje = data.get("body","").strip()
     nombre  = data.get("name","Cliente")
 
+    print(f"📩 [WA-IN] Mensaje recibido de {wa_from} ({nombre}): '{mensaje[:80]}'")
+
     if not mensaje:
+        print("⚠️  [WA-IN] Mensaje vacío — ignorando")
         return {"ok": True}
 
+    print(f"🔄 [WA-IN] Procesando con procesar_mensaje — session=wa_{numero}")
     result = await procesar_mensaje(
         session_id = f"wa_{numero}",
         user_msg   = mensaje,
@@ -595,9 +665,14 @@ async def wa_incoming(req: Request):
         canal      = "whatsapp",
     )
 
+    reply = result.get("reply", "")
+    print(f"🤖 [WA-IN] Respuesta generada ({len(reply)} chars): '{reply[:80]}'")
+
     # Responder al cliente por WhatsApp
-    wa_send(numero, result["reply"])
-    return {"ok": True, "reply": result["reply"]}
+    sent = wa_send(numero, reply)
+    print(f"{'✅' if sent else '❌'} [WA-IN] Envío al cliente: {'OK' if sent else 'FALLÓ'}")
+
+    return {"ok": True, "reply": reply}
 
 
 # ── Web/widget webhook
@@ -668,15 +743,36 @@ async def api_slots(fecha: str = None, asesor_id: int = None):
     asesor   = next((a for a in asesores if a["id"] == asesor_id), asesores[0] if asesores else None)
     raw_cal  = (asesor.get("calendar_id") or "") if asesor else ""
     cal_id   = raw_cal if raw_cal and raw_cal != "primary" else CALENDAR_ID
+    print(f"📅 [SLOTS] asesor={asesor.get('email') if asesor else 'N/A'} raw_cal='{raw_cal}' → usando cal_id='{cal_id}' fecha={fecha}")
     return {"slots": slots_disponibles(cal_id, fecha) if fecha else proponer_slots(cal_id, n_opciones=4)}
 
 @app.get("/calendar/agenda")
 async def api_agenda(fecha: str = None, asesor_id: int = None):
+    fecha_uso = fecha or datetime.now().strftime("%Y-%m-%d")
+    print(f"\n📅 [AGENDA] Solicitada — fecha='{fecha_uso}' asesor_id={asesor_id}")
+
     asesores = listar_asesores()
-    asesor   = next((a for a in asesores if a["id"] == asesor_id), asesores[0] if asesores else None)
-    raw_cal  = (asesor.get("calendar_id") or "") if asesor else ""
-    cal_id   = raw_cal if raw_cal and raw_cal != "primary" else CALENDAR_ID
-    return {"eventos": eventos_del_dia(cal_id, fecha)}
+    print(f"📅 [AGENDA] Asesores en DB ({len(asesores)}): " +
+          str([f"{a['id']}:{a['nombre']}→{a['calendar_id']}" for a in asesores]))
+
+    asesor  = next((a for a in asesores if a["id"] == asesor_id), asesores[0] if asesores else None)
+    raw_cal = (asesor.get("calendar_id") or "") if asesor else ""
+    cal_id  = raw_cal if raw_cal and raw_cal != "primary" else CALENDAR_ID
+
+    print(f"📅 [AGENDA] Asesor: '{asesor.get('nombre') if asesor else 'NINGUNO'}'")
+    print(f"📅 [AGENDA] calendar_id raw='{raw_cal}' → usando='{cal_id}'")
+    print(f"📅 [AGENDA] GOOGLE_CALENDAR_ID env='{CALENDAR_ID}'")
+    print(f"📅 [AGENDA] GOOGLE_CREDENTIALS_JSON definida: {'SÍ (' + str(len(os.getenv('GOOGLE_CREDENTIALS_JSON',''))) + ' chars)' if os.getenv('GOOGLE_CREDENTIALS_JSON') else 'NO ❌'}")
+
+    try:
+        eventos = eventos_del_dia(cal_id, fecha_uso)
+        print(f"✅ [AGENDA] {len(eventos)} eventos encontrados para {fecha_uso}")
+        for ev in eventos:
+            print(f"   · {ev.get('inicio','')} — {ev.get('titulo','')}")
+        return {"eventos": eventos}
+    except Exception as e:
+        print(f"❌ [AGENDA] Error consultando Calendar: {type(e).__name__}: {e}")
+        raise HTTPException(500, f"Error Calendar API: {e}")
 
 @app.delete("/calendar/citas/{cita_id}")
 async def api_cancelar_cita(cita_id: int):
@@ -692,6 +788,164 @@ async def api_cancelar_cita(cita_id: int):
         cancelar_evento(cal_id, cita["google_event_id"])
     actualizar_cita(cita_id, {"estado":"CANCELADA"})
     return {"ok": True}
+
+
+# =============================
+# DEBUG
+# =============================
+@app.get("/debug")
+async def debug():
+    """
+    Diagnóstico completo del sistema. Llámalo desde el browser:
+    https://neolife-bot.onrender.com/debug
+    """
+    import json as _json
+    resultado = {}
+
+    # ── 1. Variables de entorno críticas ──
+    resultado["env"] = {
+        "OPENAI_KEY":               "✅ definida" if OPENAI_KEY else "❌ FALTA",
+        "TOKKO_KEY":                "✅ definida" if TOKKO_KEY else "❌ FALTA",
+        "GOOGLE_CALENDAR_ID":       CALENDAR_ID or "❌ FALTA",
+        "ASESOR_EMAIL":             ASESOR_EMAIL or "❌ FALTA",
+        "SHEET_NAME":               SHEET_NAME or "❌ FALTA",
+        "WA_BRIDGE_URL":            WA_BRIDGE_URL or "❌ FALTA",
+        "GOOGLE_CREDENTIALS_JSON":  f"✅ {len(os.getenv('GOOGLE_CREDENTIALS_JSON',''))} chars" if os.getenv("GOOGLE_CREDENTIALS_JSON") else "❌ FALTA",
+        "DB_PATH":                  os.getenv("DB_PATH", "neolife_crm.db"),
+    }
+
+    # ── 2. Base de datos ──
+    try:
+        stats = stats_crm()
+        asesores = listar_asesores()
+        resultado["database"] = {
+            "status":       "✅ OK",
+            "total_leads":  stats["total_leads"],
+            "citas_hoy":    stats["citas_hoy"],
+            "asesores":     [{"id": a["id"], "nombre": a["nombre"], "email": a["email"], "calendar_id": a["calendar_id"]} for a in asesores],
+        }
+    except Exception as e:
+        resultado["database"] = {"status": f"❌ ERROR: {type(e).__name__}: {e}"}
+
+    # ── 3. Google Credentials ──
+    try:
+        raw = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
+        if raw:
+            info = _json.loads(raw)
+            resultado["google_credentials"] = {
+                "status":                "✅ JSON válido",
+                "type":                  info.get("type"),
+                "project_id":            info.get("project_id"),
+                "client_email":          info.get("client_email"),
+                "private_key_presente":  "✅ sí" if info.get("private_key") else "❌ no",
+            }
+        else:
+            resultado["google_credentials"] = {"status": "❌ GOOGLE_CREDENTIALS_JSON no definida"}
+    except Exception as e:
+        resultado["google_credentials"] = {"status": f"❌ JSON inválido: {e}"}
+
+    # ── 4. Google Calendar ──
+    try:
+        from neobot_calendar import _get_calendar_service, eventos_del_dia
+        svc    = _get_calendar_service()
+        hoy    = datetime.now().strftime("%Y-%m-%d")
+        evs    = eventos_del_dia(CALENDAR_ID, hoy)
+        resultado["google_calendar"] = {
+            "status":        "✅ OK",
+            "calendar_id":   CALENDAR_ID,
+            "eventos_hoy":   len(evs),
+            "titulos":       [e["titulo"] for e in evs],
+        }
+    except Exception as e:
+        resultado["google_calendar"] = {
+            "status":      f"❌ ERROR: {type(e).__name__}",
+            "detalle":     str(e),
+            "calendar_id": CALENDAR_ID,
+            "posible_causa": (
+                "service account sin acceso al calendario — comparte el calendario con el client_email de las credenciales"
+                if "403" in str(e) else
+                "credenciales inválidas o expiradas" if "401" in str(e) else
+                "calendar_id incorrecto" if "404" in str(e) else
+                "revisa los logs del servidor para más detalle"
+            ),
+        }
+
+    # ── 5. Google Sheets ──
+    try:
+        import gspread
+        from google.oauth2.service_account import Credentials as GCreds
+        raw = os.getenv("GOOGLE_CREDENTIALS_JSON", "")
+        scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
+        creds  = GCreds.from_service_account_info(_json.loads(raw), scopes=scopes) if raw else GCreds.from_service_account_file("credentials.json", scopes=scopes)
+        gc     = gspread.authorize(creds)
+        ws     = gc.open(SHEET_NAME).sheet1
+        n_filas = len(ws.get_all_values())
+        resultado["google_sheets"] = {
+            "status":     "✅ OK",
+            "sheet_name": SHEET_NAME,
+            "filas":      n_filas,
+        }
+    except gspread.exceptions.SpreadsheetNotFound:
+        resultado["google_sheets"] = {
+            "status":        f"❌ Spreadsheet '{SHEET_NAME}' no encontrado",
+            "posible_causa": "el nombre no coincide exactamente, o la service account no tiene acceso — comparte el Sheet con el client_email",
+        }
+    except Exception as e:
+        resultado["google_sheets"] = {"status": f"❌ ERROR: {type(e).__name__}: {e}"}
+
+    # ── 6. WhatsApp Bridge ──
+    try:
+        r = requests.get(f"{WA_BRIDGE_URL}/status", timeout=6)
+        data = r.json()
+        resultado["whatsapp_bridge"] = {
+            "status":        "✅ Respondiendo",
+            "url":           WA_BRIDGE_URL,
+            "wa_estado":     data.get("whatsapp", "?"),
+            "redis_sesion":  data.get("session_redis", "?"),
+            "qr_pendiente":  data.get("qr_pending", False),
+        }
+    except requests.exceptions.ConnectionError:
+        resultado["whatsapp_bridge"] = {
+            "status":        "❌ Sin conexión",
+            "url":           WA_BRIDGE_URL,
+            "posible_causa": "neolife-wa no está corriendo, o WA_BRIDGE_URL apunta a la dirección incorrecta",
+        }
+    except requests.exceptions.Timeout:
+        resultado["whatsapp_bridge"] = {"status": "❌ Timeout (>6s)", "url": WA_BRIDGE_URL}
+    except Exception as e:
+        resultado["whatsapp_bridge"] = {"status": f"❌ {type(e).__name__}: {e}", "url": WA_BRIDGE_URL}
+
+    # ── 7. OpenAI ──
+    try:
+        test = openai_client.models.list()
+        resultado["openai"] = {"status": "✅ API key válida"}
+    except Exception as e:
+        resultado["openai"] = {
+            "status":        f"❌ ERROR: {type(e).__name__}",
+            "detalle":       str(e)[:200],
+            "posible_causa": "OPENAI_KEY inválida, expirada o sin saldo",
+        }
+
+    # ── 8. Tokko Broker ──
+    try:
+        r = requests.get(TOKKO_URL, params={"key": TOKKO_KEY, "limit": 1}, timeout=8)
+        data = r.json()
+        resultado["tokko"] = {
+            "status":           "✅ OK" if r.status_code == 200 else f"❌ HTTP {r.status_code}",
+            "total_propiedades": data.get("meta", {}).get("total_count", "?"),
+        }
+    except Exception as e:
+        resultado["tokko"] = {"status": f"❌ {type(e).__name__}: {e}"}
+
+    # ── Resumen ──
+    todos_ok = all(
+        str(v.get("status","")).startswith("✅")
+        for v in resultado.values()
+        if isinstance(v, dict) and "status" in v
+    )
+    resultado["resumen"] = "✅ Todo OK" if todos_ok else "⚠️ Hay problemas — revisa las secciones con ❌"
+
+    return resultado
 
 
 # =============================
