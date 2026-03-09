@@ -125,6 +125,7 @@
     <div class="nav-item" onclick="showPage('pipeline',this)"><span class="nav-icon">◫</span> Pipeline</div>
     <div class="nav-item" onclick="showPage('agenda',this)"><span class="nav-icon">◷</span> Agenda</div>
     <div class="nav-item" onclick="showPage('whatsapp',this)"><span class="nav-icon">◎</span> WhatsApp</div>
+    <div class="nav-item" onclick="showPage('debug',this)"><span class="nav-icon">⬡</span> Debug</div>
   </nav>
   <div class="sidebar-footer">
     <span class="status-dot" id="bot-dot"></span>
@@ -225,6 +226,21 @@
     </div>
   </div>
 
+  <!-- ── DEBUG ── -->
+  <div id="page-debug" class="page">
+    <div class="topbar">
+      <h1 class="page-title">Debug</h1>
+      <div class="topbar-right">
+        <button class="btn btn-gold" onclick="loadDebug()">▶ Correr diagnóstico</button>
+      </div>
+    </div>
+    <div id="debug-content">
+      <div style="color:var(--muted);font-size:12px;margin-top:40px;text-align:center">
+        Presiona <strong style="color:var(--gold)">Correr diagnóstico</strong> para verificar el estado de todos los servicios.
+      </div>
+    </div>
+  </div>
+
 </main>
 
 <!-- MODAL -->
@@ -240,7 +256,7 @@
 // Local:  dejar como ''  (el HTML se sirve desde el mismo puerto 8000)
 // Render: cambiar a 'https://neolife-api.onrender.com'
 const API    = '';
-const WA_API = 'https://neolife-wapp.onrender.com'; // 'https://neolife-wa.onrender.com'
+const WA_API = 'https://neolife-wapp.onrender.com';
 
 let currentFilter    = null;
 let currentPrioridad = null;
@@ -255,6 +271,7 @@ function showPage(name, el) {
   if (name === 'agenda')   loadAgenda();
   if (name === 'whatsapp') loadWAStatus();
   else _stopQrPolling();
+  if (name === 'debug') loadDebug();
 }
 
 async function loadAll() {
@@ -531,7 +548,7 @@ async function _pollWAOnce() {
             <div style="font-size:12px;color:var(--amber);margin-bottom:4px">Estado desconocido</div>
             <div style="font-size:10px;color:var(--muted)">
               El bridge está respondiendo pero sin estado claro.<br>
-              Revisa los logs de <strong>neolife-wa</strong> en Render.
+              Revisa los logs de <strong>neolife-wapp</strong> en Render.
             </div>
           </div>
         </div>`;
@@ -545,7 +562,7 @@ async function _pollWAOnce() {
         <div>
           <div style="font-size:13px;margin-bottom:4px;color:var(--red)">Bridge WhatsApp offline</div>
           <div style="font-size:10px;color:var(--muted)">
-            Verifica que el servicio <strong>neolife-wa</strong> esté corriendo en Render.<br>
+            Verifica que el servicio <strong>neolife-wapp</strong> esté corriendo en Render.<br>
             Si acaba de arrancar, espera ~30s y vuelve a verificar.
           </div>
         </div>
@@ -558,7 +575,7 @@ async function resetWASession() {
   _stopQrPolling();
   try {
     await fetch((WA_API||API) + '/logout', {method:'POST'});
-    alert('Sesión eliminada. Reinicia neolife-wa en Render y vuelve aquí para escanear el QR.');
+    alert('Sesión eliminada. Reinicia neolife-wapp en Render y vuelve aquí para escanear el QR.');
     loadWAStatus();
   } catch { alert('Error al eliminar sesión'); }
 }
@@ -691,6 +708,74 @@ function fmtHora(iso) {
   catch { return iso; }
 }
 function esc(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;'); }
+
+async function loadDebug() {
+  const el = document.getElementById('debug-content');
+  el.innerHTML = '<div class="loading"><span class="spinner"></span>Ejecutando diagnóstico completo…</div>';
+  try {
+    const d = await (await fetch(API + '/debug', {signal: AbortSignal.timeout(20000)})).json();
+
+    const sections = ['env','google_creds','sheets','calendar','wa_bridge','db'];
+    const labels   = {
+      env:'Variables de entorno', google_creds:'Google Credentials',
+      sheets:'Google Sheets', calendar:'Google Calendar',
+      wa_bridge:'WhatsApp Bridge', db:'Base de datos SQLite'
+    };
+
+    const badge = (val) => {
+      const s = String(val);
+      const ok = s.startsWith('✅');
+      const err = s.startsWith('❌');
+      const color = ok ? 'var(--green)' : err ? 'var(--red)' : 'var(--amber)';
+      return `<span style="color:${color}">${esc(s)}</span>`;
+    };
+
+    const resumenColor = d._resumen?.startsWith('✅') ? 'var(--green)' : 'var(--red)';
+
+    let html = `
+      <div style="background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px 22px;margin-bottom:24px;display:flex;align-items:center;gap:12px">
+        <span style="font-size:20px">${d._resumen?.startsWith('✅') ? '✅' : '❌'}</span>
+        <div>
+          <div style="font-size:13px;color:${resumenColor};font-weight:500">${esc(d._resumen||'')}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px">${esc(d.timestamp||'')}</div>
+        </div>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">`;
+
+    for (const sec of sections) {
+      const data  = d[sec] || {};
+      const isOk  = String(data.status||'').startsWith('✅');
+      const borderColor = isOk ? 'var(--green)' : 'var(--red)';
+      const rows = Object.entries(data)
+        .filter(([k]) => k !== 'status')
+        .map(([k,v]) => `
+          <tr>
+            <td style="padding:4px 8px 4px 0;color:var(--muted);font-size:10px;white-space:nowrap">${esc(k)}</td>
+            <td style="padding:4px 0;font-size:10px;color:var(--text);word-break:break-all">${badge(v)}</td>
+          </tr>`).join('');
+
+      html += `
+        <div style="background:var(--card);border:1px solid ${borderColor}33;border-left:3px solid ${borderColor};border-radius:var(--radius);padding:16px 18px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
+            <span style="font-size:10px;letter-spacing:.15em;text-transform:uppercase;color:var(--muted)">${esc(labels[sec]||sec)}</span>
+          </div>
+          <div style="font-size:12px;margin-bottom:${rows?'10px':'0'}">${badge(data.status||'N/A')}</div>
+          ${rows ? `<table style="width:100%;border-collapse:collapse">${rows}</table>` : ''}
+          ${data.fix ? `<div style="margin-top:10px;padding:8px 10px;background:rgba(212,146,58,.1);border-radius:3px;font-size:10px;color:var(--amber);line-height:1.6">💡 ${esc(data.fix)}</div>` : ''}
+        </div>`;
+    }
+
+    html += `</div>
+      <div style="margin-top:20px;padding:14px 18px;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);font-size:10px;color:var(--muted)">
+        ℹ️ Los logs detallados están en <strong style="color:var(--text)">Render → neolife-api → Logs</strong>.
+        Busca prefijos: <code style="color:var(--gold)">[WA]</code> <code style="color:var(--gold)">[SHEETS]</code> <code style="color:var(--gold)">[AGENDA]</code> <code style="color:var(--gold)">[DEBUG]</code>
+      </div>`;
+
+    el.innerHTML = html;
+  } catch(e) {
+    el.innerHTML = `<div class="empty">❌ No se pudo conectar con la API<br><small style="color:var(--muted)">${esc(e.message)}</small></div>`;
+  }
+}
 
 document.getElementById('agenda-date').value = new Date().toISOString().split('T')[0];
 loadAll();
