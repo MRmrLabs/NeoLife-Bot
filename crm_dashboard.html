@@ -187,43 +187,101 @@
 
   <!-- WHATSAPP -->
   <div id="page-whatsapp" class="page">
-    <div class="topbar">
-      <h1 class="page-title">WhatsApp</h1>
-      <div class="topbar-right">
-        <button class="btn btn-ghost" onclick="loadWAStatus()">↻ Verificar</button>
-        <button class="btn btn-ghost" onclick="resetWASession()" style="color:var(--red);border-color:var(--red)">⚠ Reset sesión</button>
+
+    <!-- ESTADO CONECTADO / DESCONECTADO -->
+    <div id="wa-status-bar" style="
+      display:flex;align-items:center;justify-content:space-between;
+      background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+      padding:14px 20px;margin-bottom:20px;
+    ">
+      <div style="display:flex;align-items:center;gap:12px">
+        <span id="wa-indicator" style="
+          width:10px;height:10px;border-radius:50%;
+          background:var(--muted);display:inline-block;
+          transition:background .3s;
+        "></span>
+        <span id="wa-status-label" style="font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)">
+          Verificando…
+        </span>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost" onclick="waRefreshStatus()" style="font-size:10px">↻ Verificar</button>
+        <button class="btn btn-ghost" onclick="waResetSession()" style="font-size:10px;color:var(--red);border-color:rgba(192,80,80,.4)">⚠ Reset</button>
       </div>
     </div>
-    <div id="wa-content"><div class="loading"><span class="spinner"></span>Verificando…</div></div>
 
-    <!-- QR canvas oculto, se muestra solo cuando hay QR pendiente -->
-    <div id="wa-qr-box" style="display:none;margin-top:24px">
-      <div style="display:flex;gap:40px;align-items:flex-start;flex-wrap:wrap">
-
-        <!-- QR visual -->
-        <div style="background:#fff;padding:20px;border-radius:8px;box-shadow:0 0 0 1px var(--border);display:inline-block">
-          <canvas id="wa-qr-canvas"></canvas>
+    <!-- QR PANEL -->
+    <div id="wa-qr-panel" style="display:none;margin-bottom:20px">
+      <div style="
+        background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+        padding:28px 32px;display:flex;gap:40px;align-items:flex-start;flex-wrap:wrap;
+      ">
+        <div style="background:#fff;padding:16px;border-radius:6px;display:inline-block">
+          <canvas id="wa-qr-canvas" width="200" height="200"></canvas>
         </div>
-
-        <!-- Instrucciones -->
-        <div style="max-width:340px">
-          <div style="font-size:13px;color:var(--amber);font-weight:500;margin-bottom:16px">
+        <div style="max-width:320px">
+          <div style="font-size:13px;color:var(--amber);margin-bottom:14px;font-weight:500">
             📱 Escanea para conectar WhatsApp
           </div>
-          <ol style="font-size:12px;color:var(--muted);line-height:2.2;padding-left:18px">
+          <ol style="font-size:12px;color:var(--muted);line-height:2.4;padding-left:16px">
             <li>Abre <strong style="color:var(--text)">WhatsApp</strong> en tu celular</li>
             <li>Ve a <strong style="color:var(--text)">Dispositivos vinculados</strong></li>
             <li>Toca <strong style="color:var(--text)">Vincular un dispositivo</strong></li>
-            <li>Apunta la cámara a este código QR</li>
+            <li>Apunta la cámara al QR</li>
           </ol>
-          <div style="margin-top:20px;padding:12px 16px;background:rgba(201,168,76,.07);border:1px solid var(--gold-dim);border-radius:var(--radius);font-size:10px;color:var(--muted);line-height:1.7">
-            El QR se renueva cada 20 segundos.<br>
-            Esta página lo actualiza automáticamente.
-          </div>
-          <div id="wa-qr-timer" style="margin-top:14px;font-size:10px;color:var(--muted)"></div>
+          <div id="wa-qr-countdown" style="margin-top:16px;font-size:10px;color:var(--muted)"></div>
         </div>
       </div>
     </div>
+
+    <!-- CHAT UI -->
+    <div id="wa-chat-ui" style="display:none">
+      <div style="
+        display:grid;grid-template-columns:300px 1fr;
+        height:calc(100vh - 240px);min-height:500px;
+        background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+        overflow:hidden;
+      ">
+        <!-- SIDEBAR: lista de chats -->
+        <div style="border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden;">
+          <div style="padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0;">
+            <span style="font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:var(--muted)">Conversaciones</span>
+            <span id="wa-chat-count" style="font-size:10px;color:var(--muted)">—</span>
+          </div>
+          <div style="padding:10px 12px;border-bottom:1px solid var(--border);flex-shrink:0">
+            <input id="wa-search" type="text" placeholder="Buscar…" oninput="waFilterChats(this.value)"
+              style="width:100%;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'DM Mono',monospace;font-size:11px;padding:7px 10px;outline:none;">
+          </div>
+          <div id="wa-chat-list" style="overflow-y:auto;flex:1">
+            <div style="padding:32px 16px;text-align:center;color:var(--muted);font-size:11px">Cargando chats…</div>
+          </div>
+        </div>
+
+        <!-- PANEL DERECHO -->
+        <div style="display:flex;flex-direction:column;overflow:hidden">
+          <div id="wa-chat-header" style="padding:14px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:12px;flex-shrink:0;background:var(--surface);">
+            <div id="wa-chat-avatar" style="width:36px;height:36px;border-radius:50%;background:var(--border);display:flex;align-items:center;justify-content:center;font-size:14px;color:var(--muted);flex-shrink:0;">?</div>
+            <div style="flex:1;min-width:0">
+              <div id="wa-chat-name" style="font-size:13px;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">Selecciona una conversación</div>
+              <div id="wa-chat-numero" style="font-size:10px;color:var(--muted)">—</div>
+            </div>
+            <div id="wa-chat-header-actions" style="display:none;gap:8px">
+              <button class="btn btn-ghost" style="font-size:10px;padding:5px 12px" onclick="waTakeOver()">🙋 Tomar conversación</button>
+            </div>
+          </div>
+          <div id="wa-messages" style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:8px;background:var(--bg);">
+            <div style="text-align:center;color:var(--muted);font-size:11px;margin:auto">← Selecciona una conversación</div>
+          </div>
+          <div id="wa-input-bar" style="padding:14px 16px;border-top:1px solid var(--border);display:flex;gap:10px;align-items:flex-end;flex-shrink:0;background:var(--surface);">
+            <textarea id="wa-msg-input" placeholder="Escribe un mensaje manual…" rows="1"
+              onkeydown="waInputKeydown(event)" oninput="waAutoResize(this)"
+              style="flex:1;background:var(--card);border:1px solid var(--border);border-radius:var(--radius);color:var(--text);font-family:'DM Mono',monospace;font-size:11px;padding:9px 12px;outline:none;resize:none;max-height:120px;overflow-y:auto;line-height:1.5;"></textarea>
+            <button class="btn btn-gold" onclick="waSendManual()" style="padding:9px 16px;flex-shrink:0">Enviar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
   </div>
 
   <!-- ── DEBUG ── -->
@@ -266,12 +324,12 @@ function showPage(name, el) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + name).classList.add('active');
   el.classList.add('active');
-  if (name === 'leads')    loadLeads(currentFilter);
-  if (name === 'pipeline') loadPipeline();
-  if (name === 'agenda')   loadAgenda();
-  if (name === 'whatsapp') loadWAStatus();
-  else _stopQrPolling();
-  if (name === 'debug') loadDebug();
+  if (name === 'leads')     loadLeads(currentFilter);
+  if (name === 'pipeline')  loadPipeline();
+  if (name === 'agenda')    loadAgenda();
+  if (name === 'whatsapp')  waRefreshStatus();
+  else { clearInterval(waPollMsgsTimer); clearInterval(waPollChatsTimer); }
+  if (name === 'debug')     loadDebug();
 }
 
 async function loadAll() {
@@ -433,151 +491,170 @@ async function loadAgenda() {
   }
 }
 
-// ── WhatsApp QR polling ──
-let _waQrInterval   = null;
-let _waQrInstance   = null;
-let _waLastQrString = null;
+// ── WhatsApp Chat ──────────────────────────────────────────────────────────
+const WA_BRIDGE = WA_API; // apunta al bridge Node.js
 
-function _stopQrPolling() {
-  if (_waQrInterval) { clearInterval(_waQrInterval); _waQrInterval = null; }
-}
+let waConnected      = false;
+let waCurrentNumero  = null;
+let waChats          = [];
+let waPollChatsTimer = null;
+let waPollMsgsTimer  = null;
+let waQrTimer        = null;
+let waQrCountdown    = 20;
 
-async function _renderQr(qrString) {
-  const box    = document.getElementById('wa-qr-box');
-  const canvas = document.getElementById('wa-qr-canvas');
-  box.style.display = 'block';
-
-  // Solo re-renderizar si cambió el string (evita parpadeo)
-  if (qrString === _waLastQrString) return;
-  _waLastQrString = qrString;
-
-  // Limpiar instancia previa
-  if (_waQrInstance) { try { _waQrInstance.clear(); } catch(_){} }
-  canvas.innerHTML = '';
-
-  _waQrInstance = new QRCode(canvas, {
-    text:          qrString,
-    width:         240,
-    height:        240,
-    colorDark:     '#000000',
-    colorLight:    '#ffffff',
-    correctLevel:  QRCode.CorrectLevel.M,
-  });
-
-  // Temporizador regresivo de 20s (QR expira en ~20s en WhatsApp)
-  let secs = 20;
-  const timerEl = document.getElementById('wa-qr-timer');
-  const tick = () => {
-    if (timerEl) timerEl.textContent = secs > 0
-      ? `⏱ Se renueva en ${secs}s`
-      : '🔄 Actualizando QR…';
-    secs--;
-  };
-  tick();
-  if (_waQrInstance._elCountDown) clearInterval(_waQrInstance._elCountDown);
-  _waQrInstance._elCountDown = setInterval(tick, 1000);
-}
-
-async function loadWAStatus() {
-  _stopQrPolling();
-  _waLastQrString = null;
-  document.getElementById('wa-qr-box').style.display = 'none';
-  document.getElementById('wa-content').innerHTML =
-    '<div class="loading"><span class="spinner"></span>Verificando…</div>';
-
-  await _pollWAOnce();
-
-  // Arranca polling solo si estamos en la página WhatsApp
-  _waQrInterval = setInterval(async () => {
-    const page = document.getElementById('page-whatsapp');
-    if (!page || !page.classList.contains('active')) { _stopQrPolling(); return; }
-    await _pollWAOnce();
-  }, 5000);
-}
-
-async function _pollWAOnce() {
+async function waRefreshStatus() {
   try {
-    const data = await (await fetch((WA_API||API) + '/status', {signal: AbortSignal.timeout(6000)})).json();
-
-    if (data.whatsapp === 'CONNECTED' || data.connected === true) {
-      _stopQrPolling();
-      document.getElementById('wa-qr-box').style.display = 'none';
-      document.getElementById('wa-content').innerHTML = `
-        <div class="wa-card">
-          <span style="font-size:36px">✅</span>
-          <div>
-            <div style="font-size:14px;margin-bottom:6px;color:var(--green)">WhatsApp conectado</div>
-            <div style="font-size:10px;color:var(--muted);line-height:1.8">
-              Sesión activa · guardada en Redis<br>
-              ${data.timestamp ? fmtDate(data.timestamp) : ''}
-            </div>
-          </div>
-        </div>`;
-
-    } else if (data.qr_pending === true || data.qr) {
-      // Hay QR — buscar el string
-      let qrString = data.qr || null;
-      if (!qrString) {
-        // Pedir QR explícito al bridge
-        try {
-          const qrData = await (await fetch((WA_API||API) + '/qr', {signal: AbortSignal.timeout(5000)})).json();
-          qrString = qrData.qr || null;
-        } catch(_) {}
-      }
-
-      document.getElementById('wa-content').innerHTML = `
-        <div style="font-size:11px;color:var(--amber);margin-bottom:4px">
-          ⚠ Sin sesión activa — escanea el QR para conectar
-        </div>`;
-
-      if (qrString) {
-        await _renderQr(qrString);
-      } else {
-        document.getElementById('wa-content').innerHTML += `
-          <div style="font-size:10px;color:var(--muted);margin-top:8px">
-            QR pendiente en el bridge — esperando texto…
-          </div>`;
-      }
-
+    const d = await (await fetch(WA_BRIDGE + '/status', {signal:AbortSignal.timeout(6000)})).json();
+    waConnected = d.whatsapp === 'CONNECTED';
+    const indicator = document.getElementById('wa-indicator');
+    const label     = document.getElementById('wa-status-label');
+    const qrPanel   = document.getElementById('wa-qr-panel');
+    const chatUI    = document.getElementById('wa-chat-ui');
+    if (waConnected) {
+      indicator.style.background = 'var(--green)';
+      indicator.style.boxShadow  = '0 0 6px rgba(76,175,130,.6)';
+      label.textContent = 'WhatsApp conectado'; label.style.color = 'var(--green)';
+      qrPanel.style.display = 'none'; chatUI.style.display = 'block';
+      waStartPollingChats();
+    } else if (d.qr_pending) {
+      indicator.style.background = 'var(--amber)'; indicator.style.boxShadow = 'none';
+      label.textContent = 'Esperando escaneo de QR…'; label.style.color = 'var(--amber)';
+      qrPanel.style.display = 'block'; chatUI.style.display = 'none';
+      waLoadQR();
     } else {
-      document.getElementById('wa-qr-box').style.display = 'none';
-      document.getElementById('wa-content').innerHTML = `
-        <div class="wa-card">
-          <span style="font-size:28px">⚠️</span>
-          <div>
-            <div style="font-size:12px;color:var(--amber);margin-bottom:4px">Estado desconocido</div>
-            <div style="font-size:10px;color:var(--muted)">
-              El bridge está respondiendo pero sin estado claro.<br>
-              Revisa los logs de <strong>neolife-wapp</strong> en Render.
-            </div>
-          </div>
-        </div>`;
+      indicator.style.background = 'var(--red)'; indicator.style.boxShadow = 'none';
+      label.textContent = 'WhatsApp desconectado'; label.style.color = 'var(--muted)';
+      qrPanel.style.display = 'none'; chatUI.style.display = 'none';
     }
-
-  } catch {
-    document.getElementById('wa-qr-box').style.display = 'none';
-    document.getElementById('wa-content').innerHTML = `
-      <div class="wa-card">
-        <span style="font-size:28px">❌</span>
-        <div>
-          <div style="font-size:13px;margin-bottom:4px;color:var(--red)">Bridge WhatsApp offline</div>
-          <div style="font-size:10px;color:var(--muted)">
-            Verifica que el servicio <strong>neolife-wapp</strong> esté corriendo en Render.<br>
-            Si acaba de arrancar, espera ~30s y vuelve a verificar.
-          </div>
-        </div>
-      </div>`;
-  }
+  } catch(e) { document.getElementById('wa-status-label').textContent = '❌ Bridge no responde'; }
 }
 
-async function resetWASession() {
-  if (!confirm('¿Seguro? Tendrás que escanear el QR de nuevo.')) return;
-  _stopQrPolling();
+async function waResetSession() {
+  if (!confirm('¿Cerrar sesión de WhatsApp y limpiar Redis?')) return;
   try {
-    await fetch((WA_API||API) + '/logout', {method:'POST'});
-    alert('Sesión eliminada. Reinicia neolife-wapp en Render y vuelve aquí para escanear el QR.');
-    loadWAStatus();
-  } catch { alert('Error al eliminar sesión'); }
+    await fetch(WA_BRIDGE + '/logout', {method:'POST'});
+    waConnected = false; waRefreshStatus();
+  } catch(e) { alert('Error al resetear: ' + e.message); }
+}
+
+async function waLoadQR() {
+  clearInterval(waQrTimer);
+  try {
+    const d = await (await fetch(WA_BRIDGE + '/qr')).json();
+    if (d.ok && d.qr) {
+      const canvas = document.getElementById('wa-qr-canvas');
+      // Usar la librería qrcodejs ya cargada en el head
+      canvas.innerHTML = '';
+      new QRCode(canvas, {text:d.qr,width:200,height:200,colorDark:'#000',colorLight:'#fff',correctLevel:QRCode.CorrectLevel.M});
+    }
+  } catch(_) {}
+  waQrCountdown = 20;
+  waQrTimer = setInterval(async () => {
+    waQrCountdown--;
+    const el = document.getElementById('wa-qr-countdown');
+    if (el) el.textContent = waQrCountdown > 0 ? `⏱ Se renueva en ${waQrCountdown}s` : '🔄 Actualizando…';
+    if (waQrCountdown <= 0) { await waRefreshStatus(); if (!waConnected) waLoadQR(); }
+  }, 1000);
+}
+
+function waStartPollingChats() {
+  clearInterval(waPollChatsTimer);
+  waLoadChats();
+  waPollChatsTimer = setInterval(waLoadChats, 3000);
+}
+
+async function waLoadChats() {
+  try {
+    const d = await (await fetch(WA_BRIDGE + '/chats')).json();
+    if (!d.ok) return;
+    waChats = d.chats;
+    document.getElementById('wa-chat-count').textContent = waChats.length + ' chats';
+    const q = document.getElementById('wa-search')?.value || '';
+    waRenderChatList(waChats.filter(c => !q || c.name.toLowerCase().includes(q.toLowerCase()) || c.numero.includes(q)));
+    if (waCurrentNumero) waLoadMessages(waCurrentNumero, false);
+  } catch(_) {}
+}
+
+function waFilterChats(q) {
+  waRenderChatList(waChats.filter(c => !q || c.name.toLowerCase().includes(q.toLowerCase()) || c.numero.includes(q)));
+}
+
+function waRenderChatList(chats) {
+  const el = document.getElementById('wa-chat-list');
+  if (!chats.length) { el.innerHTML = '<div style="padding:32px 16px;text-align:center;color:var(--muted);font-size:11px">Sin conversaciones aún</div>'; return; }
+  el.innerHTML = chats.map(c => {
+    const active = c.numero === waCurrentNumero;
+    const unread = c.unread > 0 ? `<span style="background:var(--green);color:#0a0a0b;border-radius:10px;padding:1px 6px;font-size:9px;font-weight:600;margin-left:4px">${c.unread}</span>` : '';
+    return `<div onclick="waSelectChat('${c.numero}','${esc(c.name)}')" style="padding:12px 16px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .15s;${active?'background:rgba(201,168,76,.08);border-left:2px solid var(--gold);':''}" onmouseover="if(!${active})this.style.background='rgba(255,255,255,.03)'" onmouseout="if(!${active})this.style.background=''">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:3px">
+        <span style="font-size:12px;color:var(--text);font-weight:${c.unread?'500':'400'}">${esc(c.name)}</span>
+        <span style="font-size:9px;color:var(--muted)">${c.lastTimestamp?waFmtTime(c.lastTimestamp):''}</span>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:10px;color:var(--muted);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.lastFromMe?'<span style="color:var(--muted)">Tú: </span>':''}${esc((c.lastMessage||'').slice(0,45))}</span>
+        ${unread}
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function waSelectChat(numero, name) {
+  waCurrentNumero = numero;
+  document.getElementById('wa-chat-avatar').textContent = (name||numero)[0].toUpperCase();
+  document.getElementById('wa-chat-name').textContent   = name || numero;
+  document.getElementById('wa-chat-numero').textContent = numero;
+  document.getElementById('wa-chat-header-actions').style.display = 'flex';
+  fetch(WA_BRIDGE + `/chats/${numero}/seen`, {method:'POST'}).catch(()=>{});
+  waLoadChats();
+  await waLoadMessages(numero, true);
+  clearInterval(waPollMsgsTimer);
+  waPollMsgsTimer = setInterval(() => waLoadMessages(numero, false), 2500);
+}
+
+async function waLoadMessages(numero, scrollToBottom=false) {
+  try {
+    const d   = await (await fetch(WA_BRIDGE + `/chats/${numero}/messages`)).json();
+    const msgs = d.messages || [];
+    const el  = document.getElementById('wa-messages');
+    if (!el) return;
+    const prevScroll = el.scrollTop, prevHeight = el.scrollHeight;
+    el.innerHTML = msgs.length
+      ? msgs.map(m => {
+          const isMe = m.fromMe;
+          return `<div style="display:flex;flex-direction:column;align-items:${isMe?'flex-end':'flex-start'};margin-bottom:2px">
+            <div style="max-width:72%;padding:8px 12px;border-radius:${isMe?'12px 12px 2px 12px':'12px 12px 12px 2px'};font-size:12px;line-height:1.55;word-break:break-word;background:${isMe?'rgba(201,168,76,.15)':'var(--card)'};border:1px solid ${isMe?'rgba(201,168,76,.25)':'var(--border)'};color:${isMe?'#e0d4aa':'var(--text)'};">${esc(m.body||'')}</div>
+            <span style="font-size:9px;color:var(--muted);margin-top:3px;padding:0 4px">${waFmtTime(m.timestamp)}</span>
+          </div>`;
+        }).join('')
+      : '<div style="text-align:center;color:var(--muted);font-size:11px;margin:auto">Sin mensajes aún en esta sesión</div>';
+    if (scrollToBottom) el.scrollTop = el.scrollHeight;
+    else if (prevScroll + el.clientHeight >= prevHeight - 30) el.scrollTop = el.scrollHeight;
+  } catch(_) {}
+}
+
+async function waSendManual() {
+  const input = document.getElementById('wa-msg-input');
+  const msg   = input.value.trim();
+  if (!msg || !waCurrentNumero) return;
+  if (!waConnected) { alert('WhatsApp no está conectado'); return; }
+  input.value = ''; waAutoResize(input);
+  try {
+    const r = await fetch(WA_BRIDGE + '/send', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({number:waCurrentNumero,message:msg})});
+    const d = await r.json();
+    if (!d.ok) alert('Error al enviar: ' + (d.error||'desconocido'));
+    else waLoadMessages(waCurrentNumero, true);
+  } catch(e) { alert('Error: ' + e.message); }
+}
+
+function waInputKeydown(e) { if (e.key==='Enter'&&!e.shiftKey){e.preventDefault();waSendManual();} }
+function waAutoResize(el) { el.style.height='auto'; el.style.height=Math.min(el.scrollHeight,120)+'px'; }
+function waTakeOver() { alert(`Conversación con ${waCurrentNumero} asignada.\nEl bot no interrumpirá mientras manejes el chat manualmente.`); }
+function waFmtTime(ts) {
+  if (!ts) return '';
+  const d=new Date(ts), now=new Date();
+  return d.toDateString()===now.toDateString()
+    ? d.toLocaleTimeString('es-MX',{hour:'2-digit',minute:'2-digit'})
+    : d.toLocaleDateString('es-MX',{day:'2-digit',month:'short'});
 }
 
 async function openLead(id) {
